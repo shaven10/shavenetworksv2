@@ -23,45 +23,27 @@ $errors = [];
 
 
 $pendingBills = [];
+$nextPayableBillId = null;
 
 if ($customerId) {
-
-    $stmt = getDB()->prepare(
-
-        'SELECT b.*, c.full_name, c.account_number FROM bills b
-
-         JOIN customers c ON b.customer_id = c.id
-
-         WHERE b.customer_id = ? AND b.status IN ("pending","partial","overdue")
-
-         ORDER BY b.due_date'
-
-    );
-
-    $stmt->execute([$customerId]);
-
-    $pendingBills = $stmt->fetchAll();
-
+    updateOverdueBills();
+    $pendingBills = getCustomerOutstandingBills($customerId);
+    $nextPayableBillId = getNextPayableBillId($customerId);
 }
 
-
-
 $selectedBill = null;
-
 if ($billId) {
-
     $stmt = getDB()->prepare(
-
         'SELECT b.*, c.full_name, c.account_number FROM bills b
-
          JOIN customers c ON b.customer_id = c.id WHERE b.id = ?'
-
     );
-
     $stmt->execute([$billId]);
-
     $selectedBill = $stmt->fetch();
-
+    if ($selectedBill) {
+        $customerId = (int) $selectedBill['customer_id'];
+        $pendingBills = getCustomerOutstandingBills($customerId);
+        $nextPayableBillId = getNextPayableBillId($customerId);
+    }
 }
 
 
@@ -87,23 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
     if (empty($errors)) {
-
         $user = currentUser();
 
-        $paymentId = recordPayment($billId, $amount, $method, $reference ?: null, $notes ?: null, $user['id']);
-
-        if ($paymentId) {
-
+        try {
+            $paymentId = recordPayment($billId, $amount, $method, $reference ?: null, $notes ?: null, $user['id']);
             logActivity('payment_recorded', "Payment of {$amount} for bill #{$billId}");
-
             flash('success', 'Payment recorded. Invoice generated.');
-
             redirect("/payments/invoice.php?id={$paymentId}");
-
+        } catch (Throwable $e) {
+            $errors[] = $e->getMessage();
         }
-
-        $errors[] = 'Failed to record payment. Check the amount and try again.';
-
     }
 
 }
@@ -111,12 +86,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 $customers = getDB()->query(
-
     'SELECT id, account_number, full_name FROM customers WHERE status != "disconnected" ORDER BY full_name'
-
 )->fetchAll();
 
-
+$activeCustomer = null;
+foreach ($customers as $c) {
+    if ((int) $c['id'] === $customerId) {
+        $activeCustomer = $c;
+        break;
+    }
+}
+$activeCustomerName = $activeCustomer['full_name'] ?? ($selectedBill['full_name'] ?? '');
+$activeCustomerAccount = $activeCustomer['account_number'] ?? ($selectedBill['account_number'] ?? '');
 
 require __DIR__ . '/../includes/header.php';
 
@@ -145,7 +126,11 @@ require __DIR__ . '/../includes/header.php';
 
 
     <form method="POST" id="payment-form">
-
+        <?php if ($pendingBills): ?>
+        <div class="info-box">
+            <p>Bills must be paid in order from the <strong>oldest billing period</strong> to the newest. Only the earliest unpaid bill can be collected until it is fully paid.</p>
+        </div>
+        <?php endif; ?>
         <div class="form-grid">
 
             <div class="form-group">
@@ -181,49 +166,32 @@ require __DIR__ . '/../includes/header.php';
                     <option value="">Select bill...</option>
 
                     <?php if ($selectedBill):
-
-                        $bal = $selectedBill['amount'] - $selectedBill['paid_amount'];
-
+                        $bal = (float) $selectedBill['amount'] - (float) $selectedBill['paid_amount'];
+                        $isSelectedPayable = $nextPayableBillId && (int) $selectedBill['id'] === (int) $nextPayableBillId;
                     ?>
-
                     <option value="<?= $selectedBill['id'] ?>" selected
-
                             data-balance="<?= $bal ?>"
-
                             data-bill-number="<?= e($selectedBill['bill_number']) ?>"
-
                             data-customer="<?= e($selectedBill['full_name']) ?>"
-
-                            data-account="<?= e($selectedBill['account_number']) ?>">
-
-                        <?= e($selectedBill['bill_number']) ?> — Balance: <?= formatMoney($bal) ?>
-
+                            data-account="<?= e($selectedBill['account_number']) ?>"
+                            <?= $isSelectedPayable ? '' : 'disabled' ?>>
+                        <?= e($selectedBill['bill_number']) ?> — Balance: <?= formatMoney($bal) ?><?= $isSelectedPayable ? '' : ' (pay older bills first)' ?>
                     </option>
-
                     <?php endif; ?>
 
                     <?php foreach ($pendingBills as $b):
-
                         if ($selectedBill && $b['id'] == $selectedBill['id']) continue;
-
-                        $bal = $b['amount'] - $b['paid_amount'];
-
+                        $bal = (float) $b['balance'];
+                        $isPayable = $nextPayableBillId && (int) $b['id'] === (int) $nextPayableBillId;
                     ?>
-
                     <option value="<?= $b['id'] ?>" data-balance="<?= $bal ?>"
-
                             data-bill-number="<?= e($b['bill_number']) ?>"
-
-                            data-customer="<?= e($b['full_name']) ?>"
-
-                            data-account="<?= e($b['account_number']) ?>"
-
+                            data-customer="<?= e($activeCustomerName) ?>"
+                            data-account="<?= e($activeCustomerAccount) ?>"
+                            <?= $isPayable ? '' : 'disabled' ?>
                             <?= $billId == $b['id'] ? 'selected' : '' ?>>
-
-                        <?= e($b['bill_number']) ?> — Due <?= formatDate($b['due_date']) ?> — Balance: <?= formatMoney($bal) ?>
-
+                        <?= e($b['bill_number']) ?> — <?= formatDate($b['billing_period_start']) ?> to <?= formatDate($b['billing_period_end']) ?> — Balance: <?= formatMoney($bal) ?><?= $isPayable ? '' : ' (pay older bills first)' ?>
                     </option>
-
                     <?php endforeach; ?>
 
                 </select>
@@ -266,7 +234,7 @@ require __DIR__ . '/../includes/header.php';
 
 
 
-            <div class="form-group">
+            <div class="form-group full-width">
 
                 <label for="reference_number">Reference Number</label>
 

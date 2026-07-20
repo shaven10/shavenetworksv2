@@ -62,9 +62,19 @@ function clearTransactionData(): void
 {
     $db = getDB();
     $db->exec('SET FOREIGN_KEY_CHECKS = 0');
-    foreach (['activity_logs', 'payments', 'bills', 'repair_tickets', 'inquiries'] as $table) {
+    foreach ([
+        'remittance_payments',
+        'activity_logs',
+        'payments',
+        'payment_batches',
+        'remittances',
+        'bills',
+        'repair_tickets',
+        'inquiries',
+    ] as $table) {
         $db->exec("TRUNCATE TABLE `{$table}`");
     }
+    $db->exec('UPDATE customers SET advance_balance = 0');
     $db->exec('SET FOREIGN_KEY_CHECKS = 1');
 }
 
@@ -297,9 +307,9 @@ function runDatabaseAction(string $action, string $ownerPassword, string $confir
                 if (strtoupper(trim($confirmText)) !== 'RESET') {
                     return ['success' => false, 'message' => 'Type RESET to confirm clearing transaction data.'];
                 }
-                logActivity('db_clear_transactions', 'Cleared bills, payments, tickets, inquiries, logs');
+                logActivity('db_clear_transactions', 'Cleared bills, payments, batches, remittances, advance credits, tickets, inquiries, logs');
                 clearTransactionData();
-                return ['success' => true, 'message' => 'Transaction data cleared. Users, plans, and customers kept.'];
+                return ['success' => true, 'message' => 'Transaction data cleared. Users, plans, and customers kept. Advance balances reset to zero.'];
 
             case 'reset_demo':
                 if (strtoupper(trim($confirmText)) !== 'RESET') {

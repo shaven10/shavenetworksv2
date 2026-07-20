@@ -154,7 +154,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="tool-actions">
         <div class="tool-action-card tool-danger">
             <h3>Clear Transaction Data</h3>
-            <p>Removes bills, payments, repair tickets, inquiries, and activity logs.</p>
+            <p>Removes bills, payments, batch invoices, advance payments, remittances, repair tickets, inquiries, and activity logs. Resets customer advance credit balances to zero.</p>
             <button type="button" class="btn btn-outline btn-sm"
                     onclick="openDbModal('clear_transactions', 'Clear Transaction Data', true, 'Confirm Reset')">
                 Clear Transactions
@@ -320,7 +320,7 @@ require __DIR__ . '/../includes/header.php';
 
     var descriptions = {
         reset_passwords: 'This will reset all user passwords to password123.',
-        clear_transactions: 'This will permanently delete all bills, payments, tickets, inquiries, and logs.',
+        clear_transactions: 'This will permanently delete all bills, payments, batch invoices, advance payments, remittances, tickets, inquiries, and logs. Customer advance credit balances will be reset to zero.',
         reset_demo: 'This will DROP the entire database and restore demo seed data only.',
         save_backup: 'This will create a new SQL backup file on the server.'
     };

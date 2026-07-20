@@ -121,8 +121,10 @@ function renderNotificationGroupsHtml(array $groups): string
                    data-notification-key="<?= e($item['key']) ?>">
                     <span class="notification-item-icon">
                         <?= match ($group['type'] ?? '') {
+                            'announcements' => '📢',
                             'tickets' => '🔧',
                             'remittances' => '🏦',
+                            'signups' => '👤',
                             default => '📄',
                         } ?>
                     </span>

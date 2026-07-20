@@ -1,6 +1,9 @@
 <?php
 
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/user_avatar.php';
+require_once __DIR__ . '/../includes/users.php';
+require_once __DIR__ . '/../includes/customer_signup.php';
 
 requireRole('owner');
 
@@ -17,6 +20,7 @@ $search = trim($_GET['search'] ?? '');
 $role = $_GET['role'] ?? '';
 
 $active = $_GET['is_active'] ?? '';
+$approval = $_GET['approval_status'] ?? '';
 
 $listPage = getListPage();
 
@@ -58,10 +62,18 @@ if ($active !== '') {
 
 }
 
+if ($approval) {
+
+    $fromWhere .= ' AND approval_status = ?';
+
+    $params[] = $approval;
+
+}
+
 
 
 $result = paginatedSelect(
-    'SELECT id, username, full_name, email, avatar, role, is_active, created_at',
+    'SELECT id, username, full_name, email, avatar, role, is_active, approval_status, customer_id, created_at',
 
     $fromWhere,
 
@@ -87,9 +99,13 @@ $filterParams = paginationQuery([
 
     'is_active' => $active,
 
+    'approval_status' => $approval,
+
     'per_page'  => $perPage,
 
 ]);
+
+$pendingSignupCount = getPendingCustomerSignupCount();
 
 
 
@@ -109,7 +125,15 @@ require __DIR__ . '/../includes/header.php';
 
     </div>
 
-    <a href="<?= APP_URL ?>/users/create.php" class="btn btn-primary">+ Add User</a>
+    <div class="header-actions">
+        <?php if ($pendingSignupCount > 0): ?>
+        <a href="<?= APP_URL ?>/users/pending_signups.php" class="btn btn-warning">
+            Pending Signups (<?= $pendingSignupCount ?>)
+        </a>
+        <?php endif; ?>
+        <a href="<?= APP_URL ?>/signup.php" class="btn btn-outline" target="_blank" rel="noopener">Signup Link</a>
+        <a href="<?= APP_URL ?>/users/create.php" class="btn btn-primary">+ Add User</a>
+    </div>
 
 </div>
 
@@ -144,6 +168,13 @@ require __DIR__ . '/../includes/header.php';
 
         </select>
 
+        <select name="approval_status">
+            <option value="">All Approval</option>
+            <option value="pending" <?= $approval === 'pending' ? 'selected' : '' ?>>Pending</option>
+            <option value="approved" <?= $approval === 'approved' ? 'selected' : '' ?>>Approved</option>
+            <option value="rejected" <?= $approval === 'rejected' ? 'selected' : '' ?>>Rejected</option>
+        </select>
+
         <select name="per_page">
 
             <?php foreach (perPageOptions() as $option): ?>
@@ -156,7 +187,7 @@ require __DIR__ . '/../includes/header.php';
 
         <button type="submit" class="btn btn-outline">Filter</button>
 
-        <?php if ($search || $role || $active !== ''): ?>
+        <?php if ($search || $role || $active !== '' || $approval): ?>
 
         <a href="<?= APP_URL ?>/users/index.php" class="btn btn-outline">Clear</a>
 
@@ -188,6 +219,8 @@ require __DIR__ . '/../includes/header.php';
 
                     <th>Status</th>
 
+                    <th>Approval</th>
+
                     <th>Created</th>
 
                     <th>Actions</th>
@@ -200,7 +233,7 @@ require __DIR__ . '/../includes/header.php';
 
                 <?php if (empty($users)): ?>
 
-                <tr><td colspan="8" class="text-center text-muted">No users found.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted">No users found.</td></tr>
 
                 <?php else: foreach ($users as $u): ?>
 
@@ -216,12 +249,15 @@ require __DIR__ . '/../includes/header.php';
 
                     <td><?= $u['is_active'] ? statusBadge('active') : '<span class="badge badge-secondary">Inactive</span>' ?></td>
 
+                    <td><?= approvalStatusBadge($u['approval_status'] ?? 'approved') ?></td>
+
                     <td><?= formatDate($u['created_at']) ?></td>
 
                     <td>
-
                         <a href="<?= APP_URL ?>/users/edit.php?id=<?= $u['id'] ?>" class="btn btn-sm btn-outline">Edit</a>
-
+                        <?php if (getUserDeleteStatus((int) $u['id'])['allowed']): ?>
+                        <a href="<?= APP_URL ?>/users/edit.php?id=<?= $u['id'] ?>#remove-user-section" class="btn btn-sm btn-danger">Remove</a>
+                        <?php endif; ?>
                     </td>
 
                 </tr>

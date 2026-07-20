@@ -113,6 +113,29 @@ function getHeaderNotifications(bool $filterRead = true): array
     $db = getDB();
     $groups = [];
 
+    if (canAccess('announcements')) {
+        $announcementItems = [];
+        foreach (getUnreadAnnouncementNotifications((int) $user['id']) as $row) {
+            $announcementItems[] = [
+                'key'      => 'announcement:' . $row['id'],
+                'title'    => $row['title'],
+                'message'  => announcementNotificationPreview($row['body']),
+                'meta'     => 'From ' . $row['author_name'],
+                'time'     => $row['published_at'] ?? $row['created_at'],
+                'url'      => APP_URL . '/announcements/view.php?id=' . $row['id'],
+                'severity' => (int) $row['is_pinned'] ? 'warning' : 'info',
+            ];
+        }
+        if ($announcementItems) {
+            $groups[] = [
+                'type'  => 'announcements',
+                'label' => 'New Announcements',
+                'url'   => APP_URL . '/announcements/index.php',
+                'items' => $announcementItems,
+            ];
+        }
+    }
+
     if (hasRole('customer')) {
         $customer = getLinkedCustomer();
         if ($customer) {
@@ -158,7 +181,7 @@ function getHeaderNotifications(bool $filterRead = true): array
                     'message'  => 'Balance due: ' . formatMoney($balance),
                     'meta'     => 'Due ' . formatDate($row['due_date']),
                     'time'     => $row['due_date'],
-                    'url'      => APP_URL . '/portal/account.php',
+                    'url'      => APP_URL . '/portal/account.php?status=unpaid',
                     'severity' => $row['status'] === 'overdue' ? 'danger' : 'warning',
                 ];
             }
@@ -166,7 +189,7 @@ function getHeaderNotifications(bool $filterRead = true): array
                 $groups[] = [
                     'type'  => 'billing',
                     'label' => 'Unpaid Bills',
-                    'url'   => APP_URL . '/portal/account.php',
+                    'url'   => APP_URL . '/portal/account.php?status=unpaid',
                     'items' => $billItems,
                 ];
             }
@@ -262,6 +285,29 @@ function getHeaderNotifications(bool $filterRead = true): array
             $remittanceItems = [];
 
             if (hasRole('owner')) {
+                require_once __DIR__ . '/customer_signup.php';
+                $pendingSignups = getPendingCustomerSignups();
+                if ($pendingSignups) {
+                    $signupItems = [];
+                    foreach (array_slice($pendingSignups, 0, 6) as $row) {
+                        $signupItems[] = [
+                            'key'      => 'signup:' . $row['id'],
+                            'title'    => $row['username'],
+                            'message'  => $row['full_name'] . ' — ' . $row['account_number'],
+                            'meta'     => 'Portal signup request',
+                            'time'     => $row['created_at'],
+                            'url'      => APP_URL . '/users/pending_signups.php',
+                            'severity' => 'warning',
+                        ];
+                    }
+                    $groups[] = [
+                        'type'  => 'signups',
+                        'label' => 'Pending Portal Signups',
+                        'url'   => APP_URL . '/users/pending_signups.php',
+                        'items' => $signupItems,
+                    ];
+                }
+
                 $rows = $db->query(
                     "SELECT r.id, r.remittance_number, r.total_amount, r.payment_count, r.submitted_at, u.full_name
                      FROM remittances r

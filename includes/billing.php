@@ -58,7 +58,7 @@ function billExists(int $customerId, string $periodStart, string $periodEnd): bo
     return (int) $stmt->fetchColumn() > 0;
 }
 
-function getAllBillingPeriods(string $installationDate, ?string $referenceDate = null): array
+function getAllBillingPeriods(string $installationDate, ?string $referenceDate = null, ?int $fromYear = null, ?int $toYear = null): array
 {
     $current = getBillingPeriod($installationDate, $referenceDate);
     $currentStart = new DateTime($current['start']);
@@ -75,11 +75,15 @@ function getAllBillingPeriods(string $installationDate, ?string $referenceDate =
         $dueDate = clone $periodEnd;
         $dueDate->modify('+7 days');
 
-        $periods[] = [
+        $period = [
             'start'    => $periodStart->format('Y-m-d'),
             'end'      => $periodEnd->format('Y-m-d'),
             'due_date' => $dueDate->format('Y-m-d'),
         ];
+
+        if (periodMatchesBillingYearRange($period, $fromYear, $toYear)) {
+            $periods[] = $period;
+        }
 
         $periodStart = clone $periodEnd;
         $periodStart->modify('+1 day');
@@ -88,14 +92,62 @@ function getAllBillingPeriods(string $installationDate, ?string $referenceDate =
     return $periods;
 }
 
-function generateBillForCustomer(array $customer): int
+function periodMatchesBillingYearRange(array $period, ?int $fromYear, ?int $toYear): bool
+{
+    if ($fromYear === null && $toYear === null) {
+        return true;
+    }
+
+    $periodYear = (int) date('Y', strtotime($period['start']));
+
+    if ($fromYear !== null && $periodYear < $fromYear) {
+        return false;
+    }
+
+    if ($toYear !== null && $periodYear > $toYear) {
+        return false;
+    }
+
+    return true;
+}
+
+function resolveCustomerBillingYearRange(array $customer): array
+{
+    $fromYear = isset($customer['billing_generate_from_year']) && $customer['billing_generate_from_year'] !== null
+        ? (int) $customer['billing_generate_from_year'] : null;
+    $toYear = isset($customer['billing_generate_to_year']) && $customer['billing_generate_to_year'] !== null
+        ? (int) $customer['billing_generate_to_year'] : null;
+
+    return [$fromYear, $toYear];
+}
+
+function formatBillingYearRange(?int $fromYear, ?int $toYear): string
+{
+    if ($fromYear === null && $toYear === null) {
+        return 'All years (installation through current month)';
+    }
+
+    if ($fromYear !== null && $toYear !== null) {
+        return $fromYear === $toYear
+            ? (string) $fromYear
+            : "{$fromYear} – {$toYear} (inclusive)";
+    }
+
+    if ($fromYear !== null) {
+        return "From {$fromYear} onwards";
+    }
+
+    return "Through {$toYear}";
+}
+
+function generateBillForCustomer(array $customer, ?int $fromYear = null, ?int $toYear = null): int
 {
     if ($customer['status'] !== 'active') {
         return 0;
     }
 
     $generated = 0;
-    $periods = getAllBillingPeriods($customer['installation_date']);
+    $periods = getAllBillingPeriods($customer['installation_date'], null, $fromYear, $toYear);
 
     foreach ($periods as $period) {
         if (billExists($customer['id'], $period['start'], $period['end'])) {
@@ -125,8 +177,44 @@ function generateBillForCustomer(array $customer): int
     return $generated;
 }
 
-function generateAllBills(): array
+function generateCurrentPeriodBillForCustomer(array $customer, ?string $referenceDate = null): int
 {
+    if ($customer['status'] !== 'active') {
+        return 0;
+    }
+
+    $period = getBillingPeriod($customer['installation_date'], $referenceDate);
+
+    if ($period['start'] < $customer['installation_date']) {
+        return 0;
+    }
+
+    if (billExists((int) $customer['id'], $period['start'], $period['end'])) {
+        return 0;
+    }
+
+    $stmt = getDB()->prepare(
+        'INSERT INTO bills (customer_id, bill_number, billing_period_start, billing_period_end, due_date, amount)
+         VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $customer['id'],
+        generateBillNumber(),
+        $period['start'],
+        $period['end'],
+        $period['due_date'],
+        $customer['monthly_fee'],
+    ]);
+
+    applyCustomerAdvanceToBills((int) $customer['id'], getDB());
+
+    return 1;
+}
+
+function generateCurrentPeriodBillsForActiveCustomers(?string $referenceDate = null): array
+{
+    $referenceDate = $referenceDate ?? date('Y-m-d');
+
     $stmt = getDB()->query(
         'SELECT c.*, p.monthly_fee FROM customers c
          JOIN service_plans p ON c.plan_id = p.id
@@ -138,7 +226,7 @@ function generateAllBills(): array
     $skippedCustomers = 0;
 
     foreach ($customers as $customer) {
-        $count = generateBillForCustomer($customer);
+        $count = generateCurrentPeriodBillForCustomer($customer, $referenceDate);
         $generated += $count;
         if ($count === 0) {
             $skippedCustomers++;
@@ -151,6 +239,73 @@ function generateAllBills(): array
         'generated'         => $generated,
         'skipped'           => $skippedCustomers,
         'skipped_customers' => $skippedCustomers,
+        'reference_date'    => $referenceDate,
+        'period_label'      => date('F Y', strtotime($referenceDate)),
+    ];
+}
+
+function generateAllBills(?int $fromYear = null, ?int $toYear = null): array
+{
+    $stmt = getDB()->query(
+        'SELECT c.*, p.monthly_fee FROM customers c
+         JOIN service_plans p ON c.plan_id = p.id
+         WHERE c.status = "active"'
+    );
+    $customers = $stmt->fetchAll();
+
+    $generated = 0;
+    $skippedCustomers = 0;
+
+    foreach ($customers as $customer) {
+        $count = generateBillForCustomer($customer, $fromYear, $toYear);
+        $generated += $count;
+        if ($count === 0) {
+            $skippedCustomers++;
+        }
+    }
+
+    updateOverdueBills();
+
+    return [
+        'generated'         => $generated,
+        'skipped'           => $skippedCustomers,
+        'skipped_customers' => $skippedCustomers,
+        'from_year'         => $fromYear,
+        'to_year'           => $toYear,
+    ];
+}
+
+function generateBillsForCustomerId(int $customerId, ?int $fromYear = null, ?int $toYear = null, bool $saveYearRange = false): array
+{
+    $stmt = getDB()->prepare(
+        'SELECT c.*, p.monthly_fee FROM customers c
+         JOIN service_plans p ON c.plan_id = p.id
+         WHERE c.id = ?'
+    );
+    $stmt->execute([$customerId]);
+    $customer = $stmt->fetch();
+
+    if (!$customer) {
+        throw new RuntimeException('Customer not found.');
+    }
+
+    if ($saveYearRange) {
+        $stmt = getDB()->prepare(
+            'UPDATE customers SET billing_generate_from_year = ?, billing_generate_to_year = ? WHERE id = ?'
+        );
+        $stmt->execute([$fromYear, $toYear, $customerId]);
+        $customer['billing_generate_from_year'] = $fromYear;
+        $customer['billing_generate_to_year'] = $toYear;
+    }
+
+    $generated = generateBillForCustomer($customer, $fromYear, $toYear);
+    updateOverdueBills();
+
+    return [
+        'customer'   => $customer,
+        'generated'  => $generated,
+        'from_year'  => $fromYear,
+        'to_year'    => $toYear,
     ];
 }
 
@@ -174,6 +329,8 @@ function applyBillPayment(PDO $db, int $billId, float $amount, string $method, ?
     if (!$bill) {
         throw new RuntimeException('Bill not found.');
     }
+
+    assertSingleBillPaymentOrder($db, $billId, (int) $bill['customer_id']);
 
     $remaining = (float) $bill['amount'] - (float) $bill['paid_amount'];
     if ($amount <= 0 || $amount > $remaining + 0.01) {
@@ -224,9 +381,9 @@ function recordPayment(int $billId, float $amount, string $method, ?string $refe
         $paymentId = applyBillPayment($db, $billId, $amount, $method, $reference, $notes, $collectedBy);
         $db->commit();
         return $paymentId;
-    } catch (Exception) {
+    } catch (Throwable $e) {
         $db->rollBack();
-        return null;
+        throw $e;
     }
 }
 
@@ -234,14 +391,132 @@ function getCustomerOutstandingBills(int $customerId): array
 {
     applyCustomerAdvanceToBills($customerId);
 
-    $stmt = getDB()->prepare(
-        'SELECT b.*, (b.amount - b.paid_amount) as balance
+    return getCustomerUnpaidBillsOrdered($customerId);
+}
+
+function getCustomerUnpaidBillsOrdered(int $customerId, ?PDO $db = null): array
+{
+    $db = $db ?? getDB();
+    $stmt = $db->prepare(
+        'SELECT b.*, (b.amount - b.paid_amount) AS balance
          FROM bills b
          WHERE b.customer_id = ? AND b.status IN ("pending", "partial", "overdue")
          ORDER BY b.billing_period_start ASC, b.due_date ASC'
     );
     $stmt->execute([$customerId]);
     return $stmt->fetchAll();
+}
+
+function getNextPayableBillId(int $customerId, ?PDO $db = null): ?int
+{
+    $bills = getCustomerUnpaidBillsOrdered($customerId, $db);
+
+    return $bills ? (int) $bills[0]['id'] : null;
+}
+
+function getNextPayableBillIdMap(array $customerIds): array
+{
+    $customerIds = array_values(array_unique(array_filter(array_map('intval', $customerIds))));
+    if (empty($customerIds)) {
+        return [];
+    }
+
+    $db = getDB();
+    $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+    $stmt = $db->prepare(
+        "SELECT b.customer_id, b.id
+         FROM bills b
+         INNER JOIN (
+             SELECT customer_id, MIN(billing_period_start) AS min_period
+             FROM bills
+             WHERE customer_id IN ({$placeholders})
+               AND status IN ('pending', 'partial', 'overdue')
+             GROUP BY customer_id
+         ) oldest ON oldest.customer_id = b.customer_id
+                 AND oldest.min_period = b.billing_period_start
+         WHERE b.customer_id IN ({$placeholders})
+           AND b.status IN ('pending', 'partial', 'overdue')
+         ORDER BY b.customer_id ASC, b.due_date ASC"
+    );
+    $stmt->execute([...$customerIds, ...$customerIds]);
+
+    $map = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $customerId = (int) $row['customer_id'];
+        if (!isset($map[$customerId])) {
+            $map[$customerId] = (int) $row['id'];
+        }
+    }
+
+    return $map;
+}
+
+function assertSingleBillPaymentOrder(PDO $db, int $billId, int $customerId): void
+{
+    $unpaid = getCustomerUnpaidBillsOrdered($customerId, $db);
+    if (empty($unpaid)) {
+        throw new RuntimeException('No unpaid bills found for this customer.');
+    }
+
+    $oldest = $unpaid[0];
+    if ((int) $oldest['id'] !== $billId) {
+        throw new RuntimeException(
+            'Bills must be paid from oldest to newest. Pay '
+            . $oldest['bill_number'] . ' ('
+            . formatDate($oldest['billing_period_start']) . ' — '
+            . formatDate($oldest['billing_period_end'])
+            . ') before later billing periods.'
+        );
+    }
+}
+
+/**
+ * @param array<int, float> $billPayments
+ */
+function assertBillPaymentsInOrder(PDO $db, int $customerId, array $billPayments): void
+{
+    $unpaid = getCustomerUnpaidBillsOrdered($customerId, $db);
+    if (empty($unpaid)) {
+        throw new RuntimeException('No unpaid bills found for this customer.');
+    }
+
+    $paying = array_filter($billPayments, static fn($amount): bool => (float) $amount > 0);
+    if (empty($paying)) {
+        return;
+    }
+
+    $oldest = $unpaid[0];
+    $oldestId = (int) $oldest['id'];
+    if (!isset($paying[$oldestId])) {
+        throw new RuntimeException(
+            'Bills must be paid from oldest to newest. Include '
+            . $oldest['bill_number'] . ' ('
+            . formatDate($oldest['billing_period_start']) . ' — '
+            . formatDate($oldest['billing_period_end'])
+            . ') before paying later periods.'
+        );
+    }
+
+    $blockLaterPayments = false;
+    foreach ($unpaid as $bill) {
+        $billId = (int) $bill['id'];
+        $amount = (float) ($paying[$billId] ?? 0);
+
+        if ($blockLaterPayments && $amount > 0) {
+            throw new RuntimeException(
+                'Fully pay earlier billing periods before applying payment to later months.'
+            );
+        }
+
+        if ($amount <= 0) {
+            continue;
+        }
+
+        $remaining = (float) $bill['balance'] - $amount;
+        if ($remaining > 0.01) {
+            $blockLaterPayments = true;
+        }
+    }
 }
 
 function getCustomerAdvanceBalance(int $customerId): float
@@ -439,6 +714,178 @@ function paymentTypeLabel(?string $type): string
     };
 }
 
+function getBillById(int $billId): ?array
+{
+    $stmt = getDB()->prepare(
+        'SELECT b.*, c.full_name, c.account_number, c.status AS customer_status
+         FROM bills b
+         JOIN customers c ON b.customer_id = c.id
+         WHERE b.id = ?'
+    );
+    $stmt->execute([$billId]);
+    return $stmt->fetch() ?: null;
+}
+
+function getBillPayments(int $billId): array
+{
+    $stmt = getDB()->prepare(
+        'SELECT p.*, u.full_name AS collector_name,
+                pb.batch_invoice_number,
+                rp.remittance_id,
+                r.remittance_number,
+                r.status AS remittance_status
+         FROM payments p
+         JOIN users u ON p.collected_by = u.id
+         LEFT JOIN payment_batches pb ON p.batch_id = pb.id
+         LEFT JOIN remittance_payments rp ON rp.payment_id = p.id
+         LEFT JOIN remittances r ON r.id = rp.remittance_id
+         WHERE p.bill_id = ?
+         ORDER BY p.payment_date DESC, p.created_at DESC'
+    );
+    $stmt->execute([$billId]);
+    $payments = $stmt->fetchAll();
+
+    foreach ($payments as &$payment) {
+        $payment['revert'] = getPaymentRevertStatus($payment);
+    }
+    unset($payment);
+
+    return $payments;
+}
+
+function getPaymentRevertStatus(array $payment): array
+{
+    $type = $payment['payment_type'] ?? 'bill';
+
+    if (!in_array($type, ['bill', 'advance_applied'], true)) {
+        return [
+            'allowed' => false,
+            'reason'  => 'Only bill payments and advance-applied credits can be reverted here.',
+        ];
+    }
+
+    if (empty($payment['bill_id'])) {
+        return [
+            'allowed' => false,
+            'reason'  => 'This payment is not linked to a bill.',
+        ];
+    }
+
+    $remittanceStatus = $payment['remittance_status'] ?? null;
+    if (in_array($remittanceStatus, ['pending', 'confirmed'], true)) {
+        $label = $remittanceStatus === 'confirmed' ? 'confirmed' : 'pending';
+        return [
+            'allowed' => false,
+            'reason'  => 'Payment is part of a ' . $label . ' remittance and cannot be reverted.',
+        ];
+    }
+
+    return [
+        'allowed' => true,
+        'reason'  => '',
+    ];
+}
+
+function resolveBillStatusAfterPaymentChange(array $bill, float $paidAmount): string
+{
+    $amount = (float) $bill['amount'];
+
+    if ($paidAmount <= 0.001) {
+        return strtotime($bill['due_date']) < strtotime(date('Y-m-d')) ? 'overdue' : 'pending';
+    }
+
+    if ($paidAmount >= $amount - 0.01) {
+        return 'paid';
+    }
+
+    return strtotime($bill['due_date']) < strtotime(date('Y-m-d')) ? 'overdue' : 'partial';
+}
+
+function revertBillPayment(int $paymentId, int $revertedBy): array
+{
+    $db = getDB();
+    $db->beginTransaction();
+
+    try {
+        $stmt = $db->prepare(
+            'SELECT p.*, b.id AS linked_bill_id, b.bill_number, b.amount AS bill_amount,
+                    b.paid_amount AS bill_paid, b.due_date, b.status AS bill_status, b.customer_id
+             FROM payments p
+             LEFT JOIN bills b ON p.bill_id = b.id
+             WHERE p.id = ? FOR UPDATE'
+        );
+        $stmt->execute([$paymentId]);
+        $payment = $stmt->fetch();
+
+        if (!$payment) {
+            throw new RuntimeException('Payment not found.');
+        }
+
+        $stmt = $db->prepare(
+            'SELECT r.status, r.remittance_number
+             FROM remittance_payments rp
+             JOIN remittances r ON r.id = rp.remittance_id
+             WHERE rp.payment_id = ?'
+        );
+        $stmt->execute([$paymentId]);
+        $remittance = $stmt->fetch();
+        $payment['remittance_status'] = $remittance['status'] ?? null;
+        $payment['remittance_number'] = $remittance['remittance_number'] ?? null;
+
+        $revertStatus = getPaymentRevertStatus($payment);
+        if (!$revertStatus['allowed']) {
+            throw new RuntimeException($revertStatus['reason']);
+        }
+
+        $stmt = $db->prepare('SELECT * FROM bills WHERE id = ? FOR UPDATE');
+        $stmt->execute([(int) $payment['bill_id']]);
+        $bill = $stmt->fetch();
+
+        if (!$bill) {
+            throw new RuntimeException('Linked bill not found.');
+        }
+
+        $amount = (float) $payment['amount'];
+        $newPaid = (float) $bill['paid_amount'] - $amount;
+
+        if ($newPaid < -0.01) {
+            throw new RuntimeException('Cannot revert payment because it exceeds the recorded paid amount.');
+        }
+
+        if ($newPaid < 0) {
+            $newPaid = 0;
+        }
+
+        $newStatus = resolveBillStatusAfterPaymentChange($bill, $newPaid);
+
+        $stmt = $db->prepare('UPDATE bills SET paid_amount = ?, status = ? WHERE id = ?');
+        $stmt->execute([$newPaid, $newStatus, (int) $bill['id']]);
+
+        if (($payment['payment_type'] ?? 'bill') === 'advance_applied') {
+            $stmt = $db->prepare('UPDATE customers SET advance_balance = advance_balance + ? WHERE id = ?');
+            $stmt->execute([$amount, (int) $payment['customer_id']]);
+        }
+
+        $stmt = $db->prepare('DELETE FROM payments WHERE id = ?');
+        $stmt->execute([$paymentId]);
+
+        $db->commit();
+        updateOverdueBills();
+
+        return [
+            'bill_id'      => (int) $bill['id'],
+            'bill_number'  => $bill['bill_number'],
+            'amount'       => $amount,
+            'payment_type' => $payment['payment_type'] ?? 'bill',
+            'new_status'   => $newStatus,
+            'new_paid'     => $newPaid,
+        ];
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
+}
+
 function getAdvancePaymentInvoice(int $paymentId): ?array
 {
     $stmt = getDB()->prepare(
@@ -503,6 +950,14 @@ function recordMultiplePayments(int $customerId, array $billPayments, string $me
         if (empty($validPayments)) {
             throw new RuntimeException('No valid payment amounts entered.');
         }
+
+        assertBillPaymentsInOrder($db, $customerId, $validPayments);
+
+        $orderedBillIds = array_column(getCustomerUnpaidBillsOrdered($customerId, $db), 'id');
+        $orderedBillIds = array_map('intval', $orderedBillIds);
+        uksort($validPayments, static function (int $leftId, int $rightId) use ($orderedBillIds): int {
+            return array_search($leftId, $orderedBillIds, true) <=> array_search($rightId, $orderedBillIds, true);
+        });
 
         $total = array_sum($validPayments);
         $count = count($validPayments);
@@ -653,7 +1108,7 @@ function getDashboardAnalytics(): array
     )->fetchAll(PDO::FETCH_KEY_PAIR);
 
     $planSubscribers = $db->query(
-        'SELECT p.name, COUNT(c.id) as count
+        'SELECT p.id, p.name, COUNT(c.id) as count
          FROM service_plans p
          LEFT JOIN customers c ON p.id = c.plan_id AND c.status = "active"
          WHERE p.is_active = 1
@@ -714,7 +1169,12 @@ function fillMonthlySeries(array $rows, string $valueKey = 'total'): array
     for ($i = 5; $i >= 0; $i--) {
         $month = date('Y-m', strtotime("-{$i} months"));
         $label = date('M Y', strtotime("-{$i} months"));
-        $series[$month] = ['label' => $label, 'value' => 0];
+        $series[$month] = [
+            'label' => $label,
+            'value' => 0,
+            'from'  => date('Y-m-01', strtotime("-{$i} months")),
+            'to'    => date('Y-m-t', strtotime("-{$i} months")),
+        ];
     }
 
     foreach ($rows as $row) {

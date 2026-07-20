@@ -70,24 +70,67 @@ function validateCustomerAddressFields(array $data): array
 
 function normalizeCustomerFormData(array $post): array
 {
+    $fromYear = trim($post['billing_generate_from_year'] ?? '');
+    $toYear = trim($post['billing_generate_to_year'] ?? '');
+
     return [
-        'full_name'          => trim($post['full_name'] ?? ''),
-        'email'              => trim($post['email'] ?? ''),
-        'phone'              => trim($post['phone'] ?? ''),
-        'connection_medium'  => trim($post['connection_medium'] ?? ''),
-        'address'            => trim($post['address'] ?? ''),
-        'barangay'           => trim($post['barangay'] ?? ''),
-        'city'               => trim($post['city'] ?? ''),
-        'province'           => trim($post['province'] ?? ''),
-        'plan_id'            => (int) ($post['plan_id'] ?? 0),
-        'installation_date'  => $post['installation_date'] ?? '',
-        'status'             => $post['status'] ?? 'active',
-        'notes'              => trim($post['notes'] ?? ''),
+        'full_name'                  => trim($post['full_name'] ?? ''),
+        'email'                      => trim($post['email'] ?? ''),
+        'phone'                      => trim($post['phone'] ?? ''),
+        'connection_medium'          => trim($post['connection_medium'] ?? ''),
+        'address'                    => trim($post['address'] ?? ''),
+        'barangay'                   => trim($post['barangay'] ?? ''),
+        'city'                       => trim($post['city'] ?? ''),
+        'province'                   => trim($post['province'] ?? ''),
+        'plan_id'                    => (int) ($post['plan_id'] ?? 0),
+        'installation_date'          => $post['installation_date'] ?? '',
+        'status'                     => $post['status'] ?? 'active',
+        'notes'                      => trim($post['notes'] ?? ''),
+        'billing_generate_from_year' => $fromYear !== '' ? (int) $fromYear : null,
+        'billing_generate_to_year'   => $toYear !== '' ? (int) $toYear : null,
     ];
+}
+
+function validateBillingYearRange(?int $fromYear, ?int $toYear): array
+{
+    $errors = [];
+    $currentYear = (int) date('Y');
+    $minYear = 2000;
+    $maxYear = $currentYear + 5;
+
+    if ($fromYear !== null && ($fromYear < $minYear || $fromYear > $maxYear)) {
+        $errors[] = "Bill generation from year must be between {$minYear} and {$maxYear}.";
+    }
+
+    if ($toYear !== null && ($toYear < $minYear || $toYear > $maxYear)) {
+        $errors[] = "Bill generation to year must be between {$minYear} and {$maxYear}.";
+    }
+
+    if ($fromYear !== null && $toYear !== null && $fromYear > $toYear) {
+        $errors[] = 'Bill generation from year cannot be later than the to year.';
+    }
+
+    return $errors;
+}
+
+function billingYearOptions(int $yearsBack = 10, int $yearsForward = 2): array
+{
+    $currentYear = (int) date('Y');
+    $years = [];
+
+    for ($year = $currentYear - $yearsBack; $year <= $currentYear + $yearsForward; $year++) {
+        $years[] = $year;
+    }
+
+    return $years;
 }
 
 function deleteCustomerAccount(int $customerId): void
 {
+    if (!hasRole('owner')) {
+        throw new RuntimeException('Only the owner can delete customer accounts.');
+    }
+
     $db = getDB();
 
     $db->beginTransaction();
@@ -134,7 +177,7 @@ function getCustomerDeleteSummary(int $customerId): array
 
 function renderCustomerDeleteSection(array $customer): void
 {
-    if (!hasRole('owner', 'technical')) {
+    if (!hasRole('owner')) {
         return;
     }
 
@@ -154,7 +197,7 @@ function renderCustomerDeleteSection(array $customer): void
         <li><?= number_format($summary['inquiries']) ?> inquiry/inquiries</li>
     </ul>
     <form method="POST" action="<?= APP_URL ?>/customers/delete.php" class="delete-account-form"
-          onsubmit="return confirm(<?= json_encode('Permanently delete ' . $customer['account_number'] . '?') ?>)">
+          onsubmit='return confirm(<?= json_encode('Permanently delete ' . $customer['account_number'] . '?') ?>)'>
         <input type="hidden" name="id" value="<?= $customerId ?>">
         <div class="form-group">
             <label for="delete_confirm_<?= $customerId ?>">Type DELETE to confirm *</label>

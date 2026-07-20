@@ -22,6 +22,7 @@ $perPage = getListPerPage();
 $result = getBillingCustomersGrouped($filters, $listPage, $perPage);
 $customerGroups = $result['groups'];
 $summary = $result['summary'];
+$nextPayableBillMap = getNextPayableBillIdMap(array_column(array_column($customerGroups, 'customer'), 'id'));
 
 $filterParams = paginationQuery([
     'search'      => $filters['search'],
@@ -43,7 +44,12 @@ require __DIR__ . '/../includes/header.php';
     <?php if (hasRole('owner', 'collector')): ?>
     <div class="header-actions">
         <a href="<?= APP_URL ?>/billing/collect.php" class="btn btn-outline">Collect Multiple</a>
+        <?php if (hasRole('owner', 'collector')): ?>
+        <a href="<?= APP_URL ?>/billing/generate_current.php" class="btn btn-outline">Current Month</a>
+        <?php endif; ?>
+        <?php if (hasRole('owner')): ?>
         <a href="<?= APP_URL ?>/billing/generate.php" class="btn btn-primary">Generate Bills</a>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 </div>
@@ -157,6 +163,7 @@ require __DIR__ . '/../includes/header.php';
                 </tr>
                 <?php foreach ($bills as $bill):
                     $balance = (float) $bill['amount'] - (float) $bill['paid_amount'];
+                    $isNextPayable = ((int) ($nextPayableBillMap[(int) $customer['id']] ?? 0)) === (int) $bill['id'];
                 ?>
                 <tr class="billing-bill-row">
                     <td class="billing-col-toggle"></td>
@@ -171,9 +178,14 @@ require __DIR__ . '/../includes/header.php';
                     <td><strong><?= formatMoney($balance) ?></strong></td>
                     <td><?= statusBadge($bill['status']) ?></td>
                     <td>
-                        <?php if ($balance > 0 && hasRole('owner', 'collector')): ?>
-                        <a href="<?= APP_URL ?>/payments/collect.php?bill_id=<?= $bill['id'] ?>" class="btn btn-sm btn-outline">Collect</a>
-                        <?php else: ?>
+                        <?php if ((float) $bill['paid_amount'] > 0 && hasRole('owner', 'collector')): ?>
+                        <a href="<?= APP_URL ?>/billing/bill_payments.php?bill_id=<?= (int) $bill['id'] ?>" class="btn btn-sm btn-outline">Payments</a>
+                        <?php endif; ?>
+                        <?php if ($balance > 0 && hasRole('owner', 'collector') && $isNextPayable): ?>
+                        <a href="<?= APP_URL ?>/payments/collect.php?bill_id=<?= $bill['id'] ?>" class="btn btn-sm btn-primary">Collect</a>
+                        <?php elseif ($balance > 0 && hasRole('owner', 'collector')): ?>
+                        <span class="text-muted payment-order-blocked" title="Pay older billing periods first">Pay older first</span>
+                        <?php elseif ((float) $bill['paid_amount'] <= 0): ?>
                         <span class="text-muted">—</span>
                         <?php endif; ?>
                     </td>

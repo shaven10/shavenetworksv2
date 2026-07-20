@@ -12,10 +12,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($username && $password && login($username, $password)) {
-        redirectHome();
+    if ($username && $password) {
+        $result = attemptLogin($username, $password);
+        if ($result['success']) {
+            redirectHome();
+        }
+        $error = $result['message'];
+    } else {
+        $error = 'Invalid username or password.';
     }
-    $error = 'Invalid username or password.';
 }
 ?>
 <!DOCTYPE html>
@@ -50,8 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn btn-primary btn-block">Sign In</button>
         </form>
         <div class="login-demo">
-            <p><strong>Demo Accounts</strong></p>
-            <small>owner / tech1 / collector1 / customer1 — password: <code>password123</code></small>
+            <p>Customer? <a href="<?= APP_URL ?>/signup.php">Create a portal account</a></p>
         </div>
     </div>
 </body>

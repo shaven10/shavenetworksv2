@@ -43,6 +43,9 @@ $notifications = getHeaderNotifications();
                 <a href="<?= APP_URL ?>/portal/inquiries/index.php" class="nav-link <?= ($currentPage ?? '') === 'inquiries' ? 'active' : '' ?>">
                     <span class="nav-icon">💬</span> Inquiries
                 </a>
+                <a href="<?= APP_URL ?>/announcements/index.php" class="nav-link <?= ($currentPage ?? '') === 'announcements' ? 'active' : '' ?>">
+                    <span class="nav-icon">📢</span> Announcements
+                </a>
                 <?php else: ?>
                 <?php if (canAccess('dashboard')): ?>
                 <a href="<?= APP_URL ?>/index.php" class="nav-link <?= ($currentPage ?? '') === 'dashboard' ? 'active' : '' ?>">
@@ -82,6 +85,11 @@ $notifications = getHeaderNotifications();
                 <?php if (canAccess('inquiries')): ?>
                 <a href="<?= APP_URL ?>/support/inquiries/index.php" class="nav-link <?= ($currentPage ?? '') === 'staff_inquiries' ? 'active' : '' ?>">
                     <span class="nav-icon">💬</span> Inquiries
+                </a>
+                <?php endif; ?>
+                <?php if (canAccess('announcements')): ?>
+                <a href="<?= APP_URL ?>/announcements/index.php" class="nav-link <?= ($currentPage ?? '') === 'announcements' ? 'active' : '' ?>">
+                    <span class="nav-icon">📢</span> Announcements
                 </a>
                 <?php endif; ?>
                 <?php if (canAccess('reports')): ?>

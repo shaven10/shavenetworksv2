@@ -86,7 +86,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="card-header"><h2>Delete Plan</h2></div>
     <p class="danger-intro">Permanently remove this plan. Only available when no customers are subscribed.</p>
     <form method="POST" action="<?= APP_URL ?>/plans/delete.php"
-          onsubmit="return confirm(<?= json_encode('Delete ' . $plan['name'] . '? This cannot be undone.') ?>)">
+          onsubmit='return confirm(<?= json_encode('Delete ' . $plan['name'] . '? This cannot be undone.') ?>)'>
         <input type="hidden" name="id" value="<?= $plan['id'] ?>">
         <button type="submit" class="btn btn-danger">Delete Plan</button>
     </form>

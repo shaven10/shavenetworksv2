@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     role ENUM('owner', 'technical', 'collector', 'customer') NOT NULL,
     customer_id INT NULL,
     is_active TINYINT(1) DEFAULT 1,
+    approval_status ENUM('approved', 'pending', 'rejected') NOT NULL DEFAULT 'approved',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS customers (
     installation_date DATE NOT NULL,
     status ENUM('active', 'suspended', 'disconnected') DEFAULT 'active',
     advance_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    billing_generate_from_year SMALLINT UNSIGNED NULL,
+    billing_generate_to_year SMALLINT UNSIGNED NULL,
     notes TEXT,
     created_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -188,4 +191,17 @@ CREATE TABLE IF NOT EXISTS notification_reads (
     read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_user_notification (user_id, notification_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    body TEXT NOT NULL,
+    is_published TINYINT(1) NOT NULL DEFAULT 0,
+    is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+    created_by INT NOT NULL,
+    published_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
 );

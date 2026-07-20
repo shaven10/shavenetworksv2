@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/billing.php';
-requireRole('owner', 'technical');
+requireRole('owner');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     redirect('/customers/index.php');

@@ -95,15 +95,17 @@ require __DIR__ . '/../includes/header.php';
 
 <div class="card card-form">
     <form method="GET" class="filter-bar">
-        <label for="customer_id">Customer</label>
-        <select id="customer_id" name="customer_id" onchange="this.form.submit()" required>
-            <option value="">Select customer...</option>
-            <?php foreach ($customers as $c): ?>
-            <option value="<?= $c['id'] ?>" <?= $customerId === (int) $c['id'] ? 'selected' : '' ?>>
-                <?= e($c['account_number']) ?> — <?= e($c['full_name']) ?>
-            </option>
-            <?php endforeach; ?>
-        </select>
+        <div class="filter-bar-field">
+            <label for="customer_id">Customer</label>
+            <select id="customer_id" name="customer_id" onchange="this.form.submit()" required>
+                <option value="">Select customer...</option>
+                <?php foreach ($customers as $c): ?>
+                <option value="<?= $c['id'] ?>" <?= $customerId === (int) $c['id'] ? 'selected' : '' ?>>
+                    <?= e($c['account_number']) ?> — <?= e($c['full_name']) ?>
+                </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
     </form>
 </div>
 
@@ -133,6 +135,9 @@ require __DIR__ . '/../includes/header.php';
     <?php if (empty($outstandingBills)): ?>
     <p class="text-muted">No unpaid bills for this customer.</p>
     <?php else: ?>
+    <div class="info-box">
+        <p>Bills must be paid in order from the <strong>oldest billing period</strong> to the newest. Later months cannot be paid while earlier months still have a balance.</p>
+    </div>
     <form method="POST" id="bulk-payment-form">
         <input type="hidden" name="customer_id" value="<?= $customerId ?>">
 
@@ -159,13 +164,15 @@ require __DIR__ . '/../includes/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($outstandingBills as $bill):
+                    <?php foreach ($outstandingBills as $index => $bill):
                         $balance = (float) $bill['balance'];
+                        $isOldest = $index === 0;
                     ?>
-                    <tr>
+                    <tr class="bulk-bill-row" data-row-index="<?= $index ?>" data-bill-id="<?= (int) $bill['id'] ?>" data-balance="<?= $balance ?>">
                         <td>
                             <input type="checkbox" class="bill-select" name="selected_bills[]"
-                                   value="<?= $bill['id'] ?>" data-bill-id="<?= $bill['id'] ?>">
+                                   value="<?= $bill['id'] ?>" data-bill-id="<?= $bill['id'] ?>"
+                                   <?= $isOldest ? '' : 'disabled' ?>>
                         </td>
                         <td><strong><?= e($bill['bill_number']) ?></strong></td>
                         <td><?= formatDate($bill['billing_period_start']) ?> — <?= formatDate($bill['billing_period_end']) ?></td>
@@ -200,7 +207,7 @@ require __DIR__ . '/../includes/header.php';
                     <option value="check">Check</option>
                 </select>
             </div>
-            <div class="form-group">
+            <div class="form-group full-width">
                 <label for="reference_number">Reference Number</label>
                 <input type="text" id="reference_number" name="reference_number"
                        value="<?= e($_POST['reference_number'] ?? '') ?>">

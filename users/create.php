@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/user_avatar.php';
+require_once __DIR__ . '/../includes/customer_signup.php';
 
 requireRole('owner');
 
@@ -55,11 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($role === 'customer' && $customerId) {
 
-        $stmt = getDB()->prepare('SELECT COUNT(*) FROM users WHERE customer_id = ? AND role = ?');
-
-        $stmt->execute([$customerId, 'customer']);
-
-        if ($stmt->fetchColumn() > 0) $errors[] = 'This customer account already has a portal user.';
+        if (customerHasPortalSignup($customerId)) {
+            $errors[] = 'This customer account already has a portal user or pending signup.';
+        }
 
     }
 
@@ -68,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             $stmt = getDB()->prepare(
-                'INSERT INTO users (username, password_hash, full_name, email, role, customer_id) VALUES (?, ?, ?, ?, ?, ?)'
+                'INSERT INTO users (username, password_hash, full_name, email, role, customer_id, is_active, approval_status)
+                 VALUES (?, ?, ?, ?, ?, ?, 1, "approved")'
             );
             $stmt->execute([
                 $username, password_hash($password, PASSWORD_DEFAULT), $fullName,

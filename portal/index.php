@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/billing.php';
 requireLogin();
 requireLinkedCustomer();
 
@@ -8,6 +9,8 @@ $currentPage = 'portal';
 $customer = getLinkedCustomer();
 
 $db = getDB();
+updateOverdueBills();
+
 $stmt = $db->prepare("SELECT COUNT(*) FROM repair_tickets WHERE customer_id = ? AND status IN ('open','in_progress')");
 $stmt->execute([$customer['id']]);
 $openTickets = (int) $stmt->fetchColumn();
@@ -16,11 +19,9 @@ $stmt = $db->prepare("SELECT COUNT(*) FROM inquiries WHERE customer_id = ? AND s
 $stmt->execute([$customer['id']]);
 $openInquiries = (int) $stmt->fetchColumn();
 
-$stmt = $db->prepare(
-    "SELECT COUNT(*) FROM bills WHERE customer_id = ? AND status IN ('pending','partial','overdue')"
-);
-$stmt->execute([$customer['id']]);
-$unpaidBills = (int) $stmt->fetchColumn();
+$unpaidBills = count(getCustomerOutstandingBills((int) $customer['id']));
+$outstandingTotal = getCustomerOutstandingTotal((int) $customer['id']);
+$unpaidBillsUrl = APP_URL . '/portal/account.php?status=unpaid';
 
 $period = getBillingPeriod($customer['installation_date']);
 
@@ -43,10 +44,13 @@ require __DIR__ . '/../includes/header.php';
         <div class="stat-value"><?= formatMoney($customer['monthly_fee']) ?></div>
         <div class="stat-label">Monthly Fee</div>
     </div>
-    <div class="stat-card stat-warning">
+    <a href="<?= e($unpaidBillsUrl) ?>" class="stat-card stat-warning dashboard-stat-link" title="View unpaid bills report">
         <div class="stat-value"><?= $unpaidBills ?></div>
         <div class="stat-label">Unpaid Bills</div>
-    </div>
+        <?php if ($unpaidBills > 0): ?>
+        <div class="stat-sub"><?= formatMoney($outstandingTotal) ?> due</div>
+        <?php endif; ?>
+    </a>
     <div class="stat-card stat-danger">
         <div class="stat-value"><?= $openTickets ?></div>
         <div class="stat-label">Open Repair Tickets</div>
@@ -66,6 +70,7 @@ require __DIR__ . '/../includes/header.php';
             <a href="<?= APP_URL ?>/portal/tickets/create.php" class="btn btn-primary">Report Connection Issue</a>
             <a href="<?= APP_URL ?>/portal/inquiries/create.php" class="btn btn-outline">Submit Inquiry</a>
             <a href="<?= APP_URL ?>/portal/account.php" class="btn btn-outline">View My Account</a>
+            <a href="<?= APP_URL ?>/announcements/index.php" class="btn btn-outline">Announcements</a>
         </div>
     </div>
     <div class="info-card">
@@ -137,5 +142,7 @@ require __DIR__ . '/../includes/header.php';
         </div>
     </div>
 </div>
+
+<?php renderRecentAnnouncements(5); ?>
 
 <?php require __DIR__ . '/../includes/footer.php'; ?>

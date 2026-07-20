@@ -23,15 +23,59 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getRows() {
-        return Array.prototype.slice.call(document.querySelectorAll('.bulk-payment-table tbody tr'));
+        return Array.prototype.slice.call(document.querySelectorAll('.bulk-bill-row'));
     }
 
     function rowInputs(row) {
         return {
             checkbox: row.querySelector('.bill-select'),
             amount: row.querySelector('.bill-amount-input'),
-            balance: parseFloat(row.querySelector('.bill-balance').dataset.balance || '0')
+            balance: parseFloat(row.dataset.balance || row.querySelector('.bill-balance').dataset.balance || '0')
         };
+    }
+
+    function isFullyPaid(inputs) {
+        if (!inputs.checkbox.checked) {
+            return false;
+        }
+
+        var amount = parseFloat(inputs.amount.value || '0');
+        return amount + 0.009 >= inputs.balance;
+    }
+
+    function refreshPayableRows() {
+        var rows = getRows();
+        rows.forEach(function (row, index) {
+            var inputs = rowInputs(row);
+
+            if (index === 0) {
+                inputs.checkbox.disabled = false;
+                return;
+            }
+
+            var previousRows = rows.slice(0, index);
+            var canPay = previousRows.every(function (previousRow) {
+                return isFullyPaid(rowInputs(previousRow));
+            });
+
+            if (!canPay) {
+                inputs.checkbox.checked = false;
+                inputs.amount.value = '';
+                inputs.amount.disabled = true;
+            }
+
+            inputs.checkbox.disabled = !canPay;
+        });
+
+        if (selectAll) {
+            var enabledRows = rows.filter(function (row) {
+                return !rowInputs(row).checkbox.disabled;
+            });
+            var checkedEnabled = enabledRows.filter(function (row) {
+                return rowInputs(row).checkbox.checked;
+            });
+            selectAll.checked = enabledRows.length > 0 && checkedEnabled.length === enabledRows.length;
+        }
     }
 
     function setDetailsExpanded(expanded) {
@@ -58,13 +102,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (totalEl) {
             totalEl.textContent = formatMoney(total);
         }
+        refreshPayableRows();
         return total;
     }
 
     function syncRowState(row) {
         var inputs = rowInputs(row);
-        if (!inputs.checkbox.checked) {
-            inputs.amount.value = '';
+        if (!inputs.checkbox.checked || inputs.checkbox.disabled) {
+            if (!inputs.checkbox.checked) {
+                inputs.amount.value = '';
+            }
             inputs.amount.disabled = true;
         } else {
             inputs.amount.disabled = false;
@@ -83,9 +130,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (selectAll) {
         selectAll.addEventListener('change', function () {
-            getRows().forEach(function (row) {
+            getRows().forEach(function (row, index) {
                 var inputs = rowInputs(row);
-                inputs.checkbox.checked = selectAll.checked;
+                if (inputs.checkbox.disabled) {
+                    return;
+                }
+
+                if (selectAll.checked) {
+                    inputs.checkbox.checked = index === 0 || isFullyPaid(rowInputs(getRows()[index - 1]));
+                } else {
+                    inputs.checkbox.checked = false;
+                }
                 syncRowState(row);
             });
             updateTotal();
@@ -94,13 +149,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (fillAllBtn) {
         fillAllBtn.addEventListener('click', function () {
-            getRows().forEach(function (row) {
+            getRows().forEach(function (row, index) {
                 var inputs = rowInputs(row);
+                if (index > 0 && !isFullyPaid(rowInputs(getRows()[index - 1]))) {
+                    inputs.checkbox.checked = false;
+                    inputs.amount.value = '';
+                    inputs.amount.disabled = true;
+                    inputs.checkbox.disabled = true;
+                    return;
+                }
+
+                inputs.checkbox.disabled = false;
                 inputs.checkbox.checked = true;
                 inputs.amount.disabled = false;
                 inputs.amount.value = inputs.balance.toFixed(2);
             });
-            if (selectAll) selectAll.checked = true;
+            if (selectAll) {
+                selectAll.checked = true;
+            }
             updateTotal();
         });
     }
@@ -108,8 +174,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function validateForm() {
         var selectedCount = 0;
         var invalid = false;
+        var rows = getRows();
 
-        getRows().forEach(function (row) {
+        rows.forEach(function (row) {
             var inputs = rowInputs(row);
             if (!inputs.checkbox.checked) return;
 
@@ -124,6 +191,29 @@ document.addEventListener('DOMContentLoaded', function () {
             alert('Select at least one bill to pay.');
             return false;
         }
+
+        if (!rowInputs(rows[0]).checkbox.checked) {
+            alert('Pay the oldest billing period first.');
+            return false;
+        }
+
+        var blockLater = false;
+        for (var i = 0; i < rows.length; i++) {
+            var inputs = rowInputs(rows[i]);
+            var amount = parseFloat(inputs.amount.value || '0');
+
+            if (blockLater && inputs.checkbox.checked && amount > 0) {
+                alert('Fully pay earlier billing periods before paying later months.');
+                return false;
+            }
+
+            if (inputs.checkbox.checked && amount > 0) {
+                if (amount + 0.009 < inputs.balance) {
+                    blockLater = true;
+                }
+            }
+        }
+
         if (invalid) {
             alert('Enter a valid amount for each selected bill.');
             return false;
@@ -207,4 +297,6 @@ document.addEventListener('DOMContentLoaded', function () {
         confirmBtn.textContent = 'Processing...';
         form.submit();
     });
+
+    refreshPayableRows();
 });

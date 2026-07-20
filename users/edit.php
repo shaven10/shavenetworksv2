@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/user_avatar.php';
+require_once __DIR__ . '/../includes/users.php';
 
 requireRole('owner');
 
@@ -248,7 +249,7 @@ toggleCustomerLink();
 
 </script>
 
-
+<?php renderUserDeleteSection($user); ?>
 
 <?php require __DIR__ . '/../includes/footer.php'; ?>
 

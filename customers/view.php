@@ -57,6 +57,9 @@ require __DIR__ . '/../includes/header.php';
         <a href="<?= APP_URL ?>/customers/edit.php?id=<?= $id ?>" class="btn btn-outline">Edit</a>
         <?php endif; ?>
         <?php if (hasRole('owner', 'collector')): ?>
+        <?php if (hasRole('owner')): ?>
+        <a href="<?= APP_URL ?>/billing/generate.php?customer_id=<?= $id ?>" class="btn btn-outline">Generate Bills</a>
+        <?php endif; ?>
         <a href="<?= APP_URL ?>/payments/advance.php?customer_id=<?= $id ?>" class="btn btn-outline">Advance Payment</a>
         <a href="<?= APP_URL ?>/billing/collect.php" class="btn btn-outline">Collect Multiple</a>
         <a href="<?= APP_URL ?>/payments/collect.php?customer_id=<?= $id ?>" class="btn btn-primary">Collect Payment</a>
@@ -101,6 +104,13 @@ require __DIR__ . '/../includes/header.php';
             <dt>Next Billing</dt><dd><?= formatDate($nextBilling) ?></dd>
             <dt>Advance Credit</dt>
             <dd><strong><?= formatMoney((float) ($customer['advance_balance'] ?? 0)) ?></strong></dd>
+            <dt>Bill Generation Years</dt>
+            <dd><?= e(formatBillingYearRange(
+                isset($customer['billing_generate_from_year']) && $customer['billing_generate_from_year'] !== null
+                    ? (int) $customer['billing_generate_from_year'] : null,
+                isset($customer['billing_generate_to_year']) && $customer['billing_generate_to_year'] !== null
+                    ? (int) $customer['billing_generate_to_year'] : null
+            )) ?></dd>
         </dl>
         <?php if (hasRole('owner', 'collector') && (float) ($customer['advance_balance'] ?? 0) > 0): ?>
         <form method="POST" action="<?= APP_URL ?>/payments/apply_advance.php" style="margin-top:12px">

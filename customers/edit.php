@@ -27,27 +27,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$data['phone']) $errors[] = 'Phone is required.';
     if (!$data['plan_id']) $errors[] = 'Service plan is required.';
     $errors = array_merge($errors, validateCustomerAddressFields($data));
+    if (hasRole('owner')) {
+        $errors = array_merge(
+            $errors,
+            validateBillingYearRange($data['billing_generate_from_year'], $data['billing_generate_to_year'])
+        );
+    }
 
     if (empty($errors)) {
-        $stmt = getDB()->prepare(
-            'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
-             plan_id=?, installation_date=?, status=?, notes=? WHERE id=?'
-        );
-        $stmt->execute([
-            $data['full_name'],
-            $data['email'] ?: null,
-            $data['phone'],
-            $data['connection_medium'],
-            $data['address'],
-            $data['barangay'] ?: null,
-            $data['city'],
-            $data['province'],
-            $data['plan_id'],
-            $data['installation_date'],
-            $data['status'],
-            $data['notes'] ?: null,
-            $id,
-        ]);
+        if (hasRole('owner')) {
+            $stmt = getDB()->prepare(
+                'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
+                 plan_id=?, installation_date=?, status=?, billing_generate_from_year=?, billing_generate_to_year=?, notes=? WHERE id=?'
+            );
+            $stmt->execute([
+                $data['full_name'],
+                $data['email'] ?: null,
+                $data['phone'],
+                $data['connection_medium'],
+                $data['address'],
+                $data['barangay'] ?: null,
+                $data['city'],
+                $data['province'],
+                $data['plan_id'],
+                $data['installation_date'],
+                $data['status'],
+                $data['billing_generate_from_year'],
+                $data['billing_generate_to_year'],
+                $data['notes'] ?: null,
+                $id,
+            ]);
+        } else {
+            $stmt = getDB()->prepare(
+                'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
+                 plan_id=?, installation_date=?, status=?, notes=? WHERE id=?'
+            );
+            $stmt->execute([
+                $data['full_name'],
+                $data['email'] ?: null,
+                $data['phone'],
+                $data['connection_medium'],
+                $data['address'],
+                $data['barangay'] ?: null,
+                $data['city'],
+                $data['province'],
+                $data['plan_id'],
+                $data['installation_date'],
+                $data['status'],
+                $data['notes'] ?: null,
+                $id,
+            ]);
+        }
 
         logActivity('customer_updated', "Updated customer {$customer['account_number']}");
         flash('success', 'Customer updated successfully.');
@@ -137,6 +167,30 @@ require __DIR__ . '/../includes/header.php';
                 <label for="notes">Notes</label>
                 <textarea id="notes" name="notes" rows="2"><?= e($data['notes']) ?></textarea>
             </div>
+            <?php if (hasRole('owner')): ?>
+            <div class="form-group full-width billing-year-range-section">
+                <h3 class="form-section-title">Bill Generation Year Range</h3>
+                <p class="form-hint">Optional inclusive years for monthly bill generation. Leave both empty to generate all missing periods through the current month.</p>
+            </div>
+            <div class="form-group">
+                <label for="billing_generate_from_year">From Year (inclusive)</label>
+                <select id="billing_generate_from_year" name="billing_generate_from_year">
+                    <option value="">No limit</option>
+                    <?php foreach (billingYearOptions() as $year): ?>
+                    <option value="<?= $year ?>" <?= ($data['billing_generate_from_year'] ?? null) == $year ? 'selected' : '' ?>><?= $year ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="billing_generate_to_year">To Year (inclusive)</label>
+                <select id="billing_generate_to_year" name="billing_generate_to_year">
+                    <option value="">No limit</option>
+                    <?php foreach (billingYearOptions() as $year): ?>
+                    <option value="<?= $year ?>" <?= ($data['billing_generate_to_year'] ?? null) == $year ? 'selected' : '' ?>><?= $year ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
         </div>
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Changes</button>

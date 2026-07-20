@@ -55,7 +55,7 @@ require __DIR__ . '/../includes/header.php';
             <a href="<?= APP_URL ?>/plans/edit.php?id=<?= $plan['id'] ?>" class="btn btn-outline btn-sm">Edit Plan</a>
             <?php if ((int) $plan['subscriber_count'] === 0): ?>
             <form method="POST" action="<?= APP_URL ?>/plans/delete.php"
-                  onsubmit="return confirm(<?= json_encode('Delete ' . $plan['name'] . '? This cannot be undone.') ?>)">
+                  onsubmit='return confirm(<?= json_encode('Delete ' . $plan['name'] . '? This cannot be undone.') ?>)'>
                 <input type="hidden" name="id" value="<?= $plan['id'] ?>">
                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>
             </form>

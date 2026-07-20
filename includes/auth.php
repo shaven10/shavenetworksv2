@@ -36,20 +36,58 @@ function currentUser(): ?array
     return $user;
 }
 
-function login(string $username, string $password): bool
+function attemptLogin(string $username, string $password): array
 {
-    $stmt = getDB()->prepare('SELECT * FROM users WHERE username = ? AND is_active = 1');
+    $username = trim($username);
+
+    $stmt = getDB()->prepare('SELECT * FROM users WHERE username = ?');
     $stmt->execute([$username]);
     $user = $stmt->fetch();
 
-    if ($user && password_verify($password, $user['password_hash'])) {
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_role'] = $user['role'];
-        logActivity('login', 'User logged in');
-        return true;
+    if (!$user || !password_verify($password, $user['password_hash'])) {
+        return [
+            'success' => false,
+            'message' => 'Invalid username or password.',
+        ];
     }
 
-    return false;
+    $approvalStatus = $user['approval_status'] ?? 'approved';
+
+    if ($approvalStatus === 'pending') {
+        return [
+            'success' => false,
+            'message' => 'Your portal account is pending owner approval. You will be able to sign in once approved.',
+        ];
+    }
+
+    if ($approvalStatus === 'rejected') {
+        return [
+            'success' => false,
+            'message' => 'Your portal signup was not approved. Please contact SHAVEN Networks support.',
+        ];
+    }
+
+    if (!(int) $user['is_active']) {
+        return [
+            'success' => false,
+            'message' => 'Your account is inactive. Please contact SHAVEN Networks support.',
+        ];
+    }
+
+    startSession();
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['user_role'] = $user['role'];
+    logActivity('login', 'User logged in');
+
+    return [
+        'success' => true,
+        'message' => '',
+    ];
+}
+
+function login(string $username, string $password): bool
+{
+    return attemptLogin($username, $password)['success'];
 }
 
 function logout(): void
@@ -103,10 +141,10 @@ function canAccess(string $module): bool
     }
 
     $permissions = [
-        'owner' => ['dashboard', 'customers', 'plans', 'billing', 'payments', 'remittances', 'users', 'reports', 'settings', 'tickets', 'inquiries'],
-        'technical' => ['dashboard', 'customers', 'plans', 'tickets', 'inquiries'],
-        'collector' => ['dashboard', 'customers', 'billing', 'payments', 'remittances', 'inquiries'],
-        'customer' => ['portal', 'my_account', 'repair_tickets', 'inquiries'],
+        'owner' => ['dashboard', 'customers', 'plans', 'billing', 'payments', 'remittances', 'users', 'reports', 'settings', 'tickets', 'inquiries', 'announcements'],
+        'technical' => ['dashboard', 'customers', 'plans', 'tickets', 'inquiries', 'announcements'],
+        'collector' => ['dashboard', 'customers', 'billing', 'payments', 'remittances', 'inquiries', 'announcements'],
+        'customer' => ['portal', 'my_account', 'repair_tickets', 'inquiries', 'announcements'],
     ];
 
     return in_array($module, $permissions[$user['role']] ?? [], true);
@@ -199,3 +237,4 @@ require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/customers.php';
 require_once __DIR__ . '/database_tools.php';
 require_once __DIR__ . '/theme.php';
+require_once __DIR__ . '/announcements.php';

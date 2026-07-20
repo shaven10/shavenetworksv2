@@ -128,7 +128,7 @@ require __DIR__ . '/../includes/header.php';
                 </select>
             </div>
 
-            <div class="form-group">
+            <div class="form-group full-width">
                 <label for="reference_number">Reference Number</label>
                 <input type="text" id="reference_number" name="reference_number"
                        value="<?= e($_POST['reference_number'] ?? '') ?>">
