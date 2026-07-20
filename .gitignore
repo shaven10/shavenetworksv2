@@ -1,0 +1,17 @@
+# Local / runtime
+storage/avatars/*
+!storage/avatars/.htaccess
+storage/backups/*
+!storage/backups/.htaccess
+
+# OS & editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Environment overrides
+.env
+.env.local

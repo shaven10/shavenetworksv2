@@ -1,0 +1,10 @@
+{
+    "preset": "amber",
+    "mode": "light",
+    "primary": "#d97706",
+    "primary_dark": "#b45309",
+    "sidebar_bg": "#292524",
+    "accent": "#f59e0b",
+    "radius": 14,
+    "font_family": "system"
+}
