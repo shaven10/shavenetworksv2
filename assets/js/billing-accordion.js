@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', function () {
     var groups = Array.prototype.slice.call(document.querySelectorAll('.billing-customer-group'));
-    if (!groups.length) return;
+    var listFilterInput = document.getElementById('billing-list-filter');
+    var listFilterEmpty = document.getElementById('billing-list-filter-empty');
+    var tableWrap = document.querySelector('.billing-datatable') && document.querySelector('.billing-datatable').closest('.table-responsive');
 
     function setGroupState(group, expanded) {
         group.classList.toggle('is-expanded', expanded);
@@ -48,4 +50,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (expandAllBtn) expandAllBtn.addEventListener('click', expandAll);
     if (collapseAllBtn) collapseAllBtn.addEventListener('click', collapseAll);
+
+    function applyListFilter() {
+        if (!listFilterInput || !groups.length) {
+            return;
+        }
+
+        var query = listFilterInput.value.trim().toLowerCase();
+        var visibleCount = 0;
+
+        groups.forEach(function (group) {
+            var haystack = (group.getAttribute('data-search') || '').toLowerCase();
+            var matches = !query || haystack.indexOf(query) !== -1;
+            group.classList.toggle('is-filter-hidden', !matches);
+            if (matches) {
+                visibleCount += 1;
+            }
+        });
+
+        if (tableWrap) {
+            tableWrap.classList.toggle('is-filter-empty', query !== '' && visibleCount === 0);
+        }
+
+        if (listFilterEmpty) {
+            listFilterEmpty.classList.toggle('hidden', query === '' || visibleCount > 0);
+        }
+    }
+
+    if (listFilterInput) {
+        listFilterInput.addEventListener('input', applyListFilter);
+    }
 });
