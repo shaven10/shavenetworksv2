@@ -125,6 +125,107 @@ function billingYearOptions(int $yearsBack = 10, int $yearsForward = 2): array
     return $years;
 }
 
+function getPlanSnapshot(int $planId): ?array
+{
+    $stmt = getDB()->prepare('SELECT id, name, speed_mbps, monthly_fee FROM service_plans WHERE id = ?');
+    $stmt->execute([$planId]);
+    $plan = $stmt->fetch();
+
+    return $plan ?: null;
+}
+
+function recordCustomerPlanStart(
+    int $customerId,
+    int $planId,
+    ?string $startedAt = null,
+    ?int $changedBy = null,
+    ?string $notes = null
+): void {
+    $plan = getPlanSnapshot($planId);
+    if (!$plan) {
+        throw new RuntimeException('Service plan not found.');
+    }
+
+    $stmt = getDB()->prepare(
+        'INSERT INTO customer_plan_history
+            (customer_id, plan_id, plan_name, speed_mbps, monthly_fee, started_at, ended_at, changed_by, notes)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)'
+    );
+    $stmt->execute([
+        $customerId,
+        $plan['id'],
+        $plan['name'],
+        $plan['speed_mbps'],
+        $plan['monthly_fee'],
+        $startedAt ?: date('Y-m-d H:i:s'),
+        $changedBy,
+        $notes,
+    ]);
+}
+
+function recordCustomerPlanChange(
+    int $customerId,
+    int $oldPlanId,
+    int $newPlanId,
+    ?int $changedBy = null,
+    ?string $notes = null
+): void {
+    if ($oldPlanId === $newPlanId) {
+        return;
+    }
+
+    $db = getDB();
+    $endedAt = date('Y-m-d H:i:s');
+
+    $openStmt = $db->prepare(
+        'SELECT id FROM customer_plan_history
+         WHERE customer_id = ? AND ended_at IS NULL
+         ORDER BY started_at DESC, id DESC LIMIT 1'
+    );
+    $openStmt->execute([$customerId]);
+    $openId = $openStmt->fetchColumn();
+
+    if ($openId) {
+        $db->prepare('UPDATE customer_plan_history SET ended_at = ? WHERE id = ?')
+            ->execute([$endedAt, $openId]);
+    } else {
+        $oldPlan = getPlanSnapshot($oldPlanId);
+        if ($oldPlan) {
+            $db->prepare(
+                'INSERT INTO customer_plan_history
+                    (customer_id, plan_id, plan_name, speed_mbps, monthly_fee, started_at, ended_at, changed_by, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )->execute([
+                $customerId,
+                $oldPlan['id'],
+                $oldPlan['name'],
+                $oldPlan['speed_mbps'],
+                $oldPlan['monthly_fee'],
+                $endedAt,
+                $endedAt,
+                $changedBy,
+                'Previous plan (no prior history)',
+            ]);
+        }
+    }
+
+    recordCustomerPlanStart($customerId, $newPlanId, $endedAt, $changedBy, $notes);
+}
+
+function getCustomerPlanHistory(int $customerId): array
+{
+    $stmt = getDB()->prepare(
+        'SELECT h.*, u.full_name as changed_by_name
+         FROM customer_plan_history h
+         LEFT JOIN users u ON h.changed_by = u.id
+         WHERE h.customer_id = ?
+         ORDER BY h.started_at DESC, h.id DESC'
+    );
+    $stmt->execute([$customerId]);
+
+    return $stmt->fetchAll();
+}
+
 function deleteCustomerAccount(int $customerId): void
 {
     if (!hasRole('owner')) {
@@ -136,6 +237,7 @@ function deleteCustomerAccount(int $customerId): void
     $db->beginTransaction();
 
     try {
+        $db->prepare('DELETE FROM customer_plan_history WHERE customer_id = ?')->execute([$customerId]);
         $db->prepare('DELETE FROM payments WHERE customer_id = ?')->execute([$customerId]);
         $db->prepare('DELETE FROM bills WHERE customer_id = ?')->execute([$customerId]);
         $db->prepare('UPDATE users SET customer_id = NULL WHERE customer_id = ?')->execute([$customerId]);

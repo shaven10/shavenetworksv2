@@ -1,0 +1,4 @@
+﻿full_name,phone,email,plan,connection_medium,installation_date,address,barangay,city,province,notes,status
+"Juan Dela Cruz",09171234567,juan@example.com,"Basic 10Mbps",fiber_olt,2026-07-30,"Purok 1, Main Street",Maralag,Dumingag,"Zamboanga Del Sur","Sample row — replace with real data",active
+"Maria Santos",09181234567,,"Standard 25Mbps",fiber_mediacon,2026-07-30,"Purok 3, Riverside",Maralag,Dumingag,"Zamboanga Del Sur",,active
+"Pedro Reyes",09201234567,pedro@example.com,"Premium 50Mbps",wireless_radio,2026-07-30,"Sitio Lawis",Maralag,Dumingag,"Zamboanga Del Sur",,active

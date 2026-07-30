@@ -35,6 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
+        $oldPlanId = (int) $customer['plan_id'];
+        $newPlanId = (int) $data['plan_id'];
+        $user = currentUser();
+
         if (hasRole('owner')) {
             $stmt = getDB()->prepare(
                 'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
@@ -77,6 +81,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $data['notes'] ?: null,
                 $id,
             ]);
+        }
+
+        if ($oldPlanId !== $newPlanId) {
+            recordCustomerPlanChange($id, $oldPlanId, $newPlanId, (int) ($user['id'] ?? 0) ?: null, 'Plan changed');
+            logActivity(
+                'plan_changed',
+                "Changed plan for {$customer['account_number']} from plan #{$oldPlanId} to #{$newPlanId}"
+            );
         }
 
         logActivity('customer_updated', "Updated customer {$customer['account_number']}");

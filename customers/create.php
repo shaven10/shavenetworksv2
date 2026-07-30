@@ -41,6 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user['id'],
         ]);
 
+        $customerId = (int) getDB()->lastInsertId();
+        recordCustomerPlanStart(
+            $customerId,
+            $data['plan_id'],
+            $data['installation_date'] . ' 00:00:00',
+            (int) $user['id'],
+            'Initial plan'
+        );
+
         logActivity('customer_created', "Created customer {$accountNumber}");
         flash('success', "Customer {$accountNumber} created successfully.");
         redirect('/customers/index.php');

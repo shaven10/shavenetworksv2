@@ -51,6 +51,24 @@ CREATE TABLE IF NOT EXISTS customers (
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS customer_plan_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id INT NOT NULL,
+    plan_id INT NOT NULL,
+    plan_name VARCHAR(100) NOT NULL,
+    speed_mbps INT NOT NULL,
+    monthly_fee DECIMAL(10,2) NOT NULL,
+    started_at DATETIME NOT NULL,
+    ended_at DATETIME NULL,
+    changed_by INT NULL,
+    notes TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES service_plans(id),
+    FOREIGN KEY (changed_by) REFERENCES users(id),
+    INDEX idx_customer_plan_started (customer_id, started_at)
+);
+
 CREATE TABLE IF NOT EXISTS bills (
     id INT AUTO_INCREMENT PRIMARY KEY,
     customer_id INT NOT NULL,

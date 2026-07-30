@@ -28,92 +28,128 @@ $notifications = getHeaderNotifications();
             </div>
             <nav class="sidebar-nav">
                 <?php if ($isCustomer): ?>
-                <a href="<?= APP_URL ?>/portal/index.php" class="nav-link <?= ($currentPage ?? '') === 'portal' ? 'active' : '' ?>">
-                    <span class="nav-icon">🏠</span> My Dashboard
-                </a>
-                <a href="<?= APP_URL ?>/portal/account.php" class="nav-link <?= ($currentPage ?? '') === 'my_account' ? 'active' : '' ?>">
-                    <span class="nav-icon">👤</span> My Account
-                </a>
-                <a href="<?= APP_URL ?>/profile.php" class="nav-link <?= ($currentPage ?? '') === 'profile' ? 'active' : '' ?>">
-                    <span class="nav-icon">🖼</span> Profile Photo
-                </a>
-                <a href="<?= APP_URL ?>/portal/tickets/index.php" class="nav-link <?= ($currentPage ?? '') === 'repair_tickets' ? 'active' : '' ?>">
-                    <span class="nav-icon">🔧</span> Repair Tickets
-                </a>
-                <a href="<?= APP_URL ?>/portal/inquiries/index.php" class="nav-link <?= ($currentPage ?? '') === 'inquiries' ? 'active' : '' ?>">
-                    <span class="nav-icon">💬</span> Inquiries
-                </a>
-                <a href="<?= APP_URL ?>/announcements/index.php" class="nav-link <?= ($currentPage ?? '') === 'announcements' ? 'active' : '' ?>">
-                    <span class="nav-icon">📢</span> Announcements
-                </a>
+                <div class="nav-group">
+                    <div class="nav-group-label">Account</div>
+                    <a href="<?= APP_URL ?>/portal/index.php" class="nav-link <?= ($currentPage ?? '') === 'portal' ? 'active' : '' ?>">
+                        <span class="nav-icon">🏠</span> My Dashboard
+                    </a>
+                    <a href="<?= APP_URL ?>/portal/account.php" class="nav-link <?= ($currentPage ?? '') === 'my_account' ? 'active' : '' ?>">
+                        <span class="nav-icon">👤</span> My Account
+                    </a>
+                    <a href="<?= APP_URL ?>/profile.php" class="nav-link <?= ($currentPage ?? '') === 'profile' ? 'active' : '' ?>">
+                        <span class="nav-icon">🖼</span> Profile Photo
+                    </a>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Support</div>
+                    <a href="<?= APP_URL ?>/portal/tickets/index.php" class="nav-link <?= ($currentPage ?? '') === 'repair_tickets' ? 'active' : '' ?>">
+                        <span class="nav-icon">🔧</span> Repair Tickets
+                    </a>
+                    <a href="<?= APP_URL ?>/portal/inquiries/index.php" class="nav-link <?= ($currentPage ?? '') === 'inquiries' ? 'active' : '' ?>">
+                        <span class="nav-icon">💬</span> Inquiries
+                    </a>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Updates</div>
+                    <a href="<?= APP_URL ?>/announcements/index.php" class="nav-link <?= ($currentPage ?? '') === 'announcements' ? 'active' : '' ?>">
+                        <span class="nav-icon">📢</span> Announcements
+                    </a>
+                </div>
                 <?php else: ?>
                 <?php if (canAccess('dashboard')): ?>
-                <a href="<?= APP_URL ?>/index.php" class="nav-link <?= ($currentPage ?? '') === 'dashboard' ? 'active' : '' ?>">
-                    <span class="nav-icon">📊</span> Dashboard
-                </a>
+                <div class="nav-group">
+                    <div class="nav-group-label">Overview</div>
+                    <a href="<?= APP_URL ?>/index.php" class="nav-link <?= ($currentPage ?? '') === 'dashboard' ? 'active' : '' ?>">
+                        <span class="nav-icon">📊</span> Dashboard
+                    </a>
+                </div>
                 <?php endif; ?>
-                <?php if (canAccess('customers')): ?>
-                <a href="<?= APP_URL ?>/customers/index.php" class="nav-link <?= ($currentPage ?? '') === 'customers' ? 'active' : '' ?>">
-                    <span class="nav-icon">👥</span> Customers
-                </a>
+                <?php if (canAccess('customers') || canAccess('plans')): ?>
+                <div class="nav-group">
+                    <div class="nav-group-label">Subscribers</div>
+                    <?php if (canAccess('customers')): ?>
+                    <a href="<?= APP_URL ?>/customers/index.php" class="nav-link <?= ($currentPage ?? '') === 'customers' ? 'active' : '' ?>">
+                        <span class="nav-icon">👥</span> Customers
+                    </a>
+                    <?php endif; ?>
+                    <?php if (canAccess('plans')): ?>
+                    <a href="<?= APP_URL ?>/plans/index.php" class="nav-link <?= ($currentPage ?? '') === 'plans' ? 'active' : '' ?>">
+                        <span class="nav-icon">📡</span> Service Plans
+                    </a>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
-                <?php if (canAccess('plans')): ?>
-                <a href="<?= APP_URL ?>/plans/index.php" class="nav-link <?= ($currentPage ?? '') === 'plans' ? 'active' : '' ?>">
-                    <span class="nav-icon">📡</span> Service Plans
-                </a>
+                <?php if (canAccess('billing') || canAccess('payments') || canAccess('remittances')): ?>
+                <div class="nav-group">
+                    <div class="nav-group-label">Finance</div>
+                    <?php if (canAccess('billing')): ?>
+                    <a href="<?= APP_URL ?>/billing/index.php" class="nav-link <?= ($currentPage ?? '') === 'billing' ? 'active' : '' ?>">
+                        <span class="nav-icon">📄</span> Billing
+                    </a>
+                    <?php endif; ?>
+                    <?php if (canAccess('payments')): ?>
+                    <a href="<?= APP_URL ?>/payments/index.php" class="nav-link <?= ($currentPage ?? '') === 'payments' ? 'active' : '' ?>">
+                        <span class="nav-icon">💰</span> Payments
+                    </a>
+                    <?php endif; ?>
+                    <?php if (canAccess('remittances')): ?>
+                    <a href="<?= APP_URL ?>/remittances/index.php" class="nav-link <?= ($currentPage ?? '') === 'remittances' ? 'active' : '' ?>">
+                        <span class="nav-icon">🏦</span> Remittances
+                    </a>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
-                <?php if (canAccess('billing')): ?>
-                <a href="<?= APP_URL ?>/billing/index.php" class="nav-link <?= ($currentPage ?? '') === 'billing' ? 'active' : '' ?>">
-                    <span class="nav-icon">📄</span> Billing
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('payments')): ?>
-                <a href="<?= APP_URL ?>/payments/index.php" class="nav-link <?= ($currentPage ?? '') === 'payments' ? 'active' : '' ?>">
-                    <span class="nav-icon">💰</span> Payments
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('remittances')): ?>
-                <a href="<?= APP_URL ?>/remittances/index.php" class="nav-link <?= ($currentPage ?? '') === 'remittances' ? 'active' : '' ?>">
-                    <span class="nav-icon">🏦</span> Remittances
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('tickets')): ?>
-                <a href="<?= APP_URL ?>/support/tickets/index.php" class="nav-link <?= ($currentPage ?? '') === 'tickets' ? 'active' : '' ?>">
-                    <span class="nav-icon">🔧</span> Repair Tickets
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('inquiries')): ?>
-                <a href="<?= APP_URL ?>/support/inquiries/index.php" class="nav-link <?= ($currentPage ?? '') === 'staff_inquiries' ? 'active' : '' ?>">
-                    <span class="nav-icon">💬</span> Inquiries
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('announcements')): ?>
-                <a href="<?= APP_URL ?>/announcements/index.php" class="nav-link <?= ($currentPage ?? '') === 'announcements' ? 'active' : '' ?>">
-                    <span class="nav-icon">📢</span> Announcements
-                </a>
+                <?php if (canAccess('tickets') || canAccess('inquiries') || canAccess('announcements')): ?>
+                <div class="nav-group">
+                    <div class="nav-group-label">Support</div>
+                    <?php if (canAccess('tickets')): ?>
+                    <a href="<?= APP_URL ?>/support/tickets/index.php" class="nav-link <?= ($currentPage ?? '') === 'tickets' ? 'active' : '' ?>">
+                        <span class="nav-icon">🔧</span> Repair Tickets
+                    </a>
+                    <?php endif; ?>
+                    <?php if (canAccess('inquiries')): ?>
+                    <a href="<?= APP_URL ?>/support/inquiries/index.php" class="nav-link <?= ($currentPage ?? '') === 'staff_inquiries' ? 'active' : '' ?>">
+                        <span class="nav-icon">💬</span> Inquiries
+                    </a>
+                    <?php endif; ?>
+                    <?php if (canAccess('announcements')): ?>
+                    <a href="<?= APP_URL ?>/announcements/index.php" class="nav-link <?= ($currentPage ?? '') === 'announcements' ? 'active' : '' ?>">
+                        <span class="nav-icon">📢</span> Announcements
+                    </a>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
                 <?php if (canAccess('reports')): ?>
-                <a href="<?= APP_URL ?>/reports/index.php" class="nav-link <?= ($currentPage ?? '') === 'reports' ? 'active' : '' ?>">
-                    <span class="nav-icon">📈</span> Reports
-                </a>
+                <div class="nav-group">
+                    <div class="nav-group-label">Insights</div>
+                    <a href="<?= APP_URL ?>/reports/index.php" class="nav-link <?= ($currentPage ?? '') === 'reports' ? 'active' : '' ?>">
+                        <span class="nav-icon">📈</span> Reports
+                    </a>
+                </div>
                 <?php endif; ?>
-                <?php if (!$isCustomer): ?>
-                <a href="<?= APP_URL ?>/profile.php" class="nav-link <?= ($currentPage ?? '') === 'profile' ? 'active' : '' ?>">
-                    <span class="nav-icon">👤</span> My Profile
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('settings')): ?>
-                <a href="<?= APP_URL ?>/settings/theme.php" class="nav-link <?= ($currentPage ?? '') === 'theme_manager' ? 'active' : '' ?>">
-                    <span class="nav-icon">🎨</span> Theme Manager
-                </a>
-                <a href="<?= APP_URL ?>/settings/database.php" class="nav-link <?= ($currentPage ?? '') === 'database_tools' ? 'active' : '' ?>">
-                    <span class="nav-icon">🗄</span> Database Tools
-                </a>
-                <?php endif; ?>
-                <?php if (canAccess('users')): ?>
-                <a href="<?= APP_URL ?>/users/index.php" class="nav-link <?= ($currentPage ?? '') === 'users' ? 'active' : '' ?>">
-                    <span class="nav-icon">🔐</span> Users
-                </a>
+                <div class="nav-group">
+                    <div class="nav-group-label">Account</div>
+                    <a href="<?= APP_URL ?>/profile.php" class="nav-link <?= ($currentPage ?? '') === 'profile' ? 'active' : '' ?>">
+                        <span class="nav-icon">👤</span> My Profile
+                    </a>
+                </div>
+                <?php if (canAccess('settings') || canAccess('users')): ?>
+                <div class="nav-group">
+                    <div class="nav-group-label">System</div>
+                    <?php if (canAccess('settings')): ?>
+                    <a href="<?= APP_URL ?>/settings/theme.php" class="nav-link <?= ($currentPage ?? '') === 'theme_manager' ? 'active' : '' ?>">
+                        <span class="nav-icon">🎨</span> Theme Manager
+                    </a>
+                    <a href="<?= APP_URL ?>/settings/database.php" class="nav-link <?= ($currentPage ?? '') === 'database_tools' ? 'active' : '' ?>">
+                        <span class="nav-icon">🗄</span> Database Tools
+                    </a>
+                    <?php endif; ?>
+                    <?php if (canAccess('users')): ?>
+                    <a href="<?= APP_URL ?>/users/index.php" class="nav-link <?= ($currentPage ?? '') === 'users' ? 'active' : '' ?>">
+                        <span class="nav-icon">🔐</span> Users
+                    </a>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
                 <?php endif; ?>
             </nav>

@@ -44,6 +44,8 @@ $stmt = getDB()->prepare(
 $stmt->execute([$id]);
 $payments = $stmt->fetchAll();
 
+$planHistory = getCustomerPlanHistory($id);
+
 require __DIR__ . '/../includes/header.php';
 ?>
 
@@ -181,6 +183,46 @@ require __DIR__ . '/../includes/header.php';
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Plan History</h2></div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Plan</th>
+                    <th>Speed</th>
+                    <th>Monthly Fee</th>
+                    <th>Started</th>
+                    <th>Ended</th>
+                    <th>Changed By</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($planHistory)): ?>
+                <tr><td colspan="7" class="text-muted text-center">No plan history recorded.</td></tr>
+                <?php else: foreach ($planHistory as $row): ?>
+                <tr>
+                    <td><?= e($row['plan_name']) ?></td>
+                    <td><?= (int) $row['speed_mbps'] ?> Mbps</td>
+                    <td><?= formatMoney((float) $row['monthly_fee']) ?></td>
+                    <td><?= formatDate($row['started_at']) ?></td>
+                    <td><?= $row['ended_at'] ? formatDate($row['ended_at']) : '—' ?></td>
+                    <td><?= e($row['changed_by_name'] ?? '—') ?></td>
+                    <td>
+                        <?php if (!$row['ended_at']): ?>
+                        <span class="badge badge-success">Current</span>
+                        <?php else: ?>
+                        <span class="badge badge-secondary">Previous</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; endif; ?>
+            </tbody>
+        </table>
     </div>
 </div>
 

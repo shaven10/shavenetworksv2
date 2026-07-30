@@ -138,11 +138,13 @@ require __DIR__ . '/../includes/header.php';
     </div>
 
     <?php if (hasRole('owner', 'technical')): ?>
-
-    <a href="<?= APP_URL ?>/customers/create.php" class="btn btn-primary">+ Add Customer</a>
-
+    <div class="header-actions">
+        <?php if (hasRole('owner')): ?>
+        <a href="<?= APP_URL ?>/customers/import.php" class="btn btn-outline">Import Excel</a>
+        <?php endif; ?>
+        <a href="<?= APP_URL ?>/customers/create.php" class="btn btn-primary">+ Add Customer</a>
+    </div>
     <?php endif; ?>
-
 </div>
 
 

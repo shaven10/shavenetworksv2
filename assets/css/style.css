@@ -70,11 +70,27 @@ a:hover { text-decoration: underline; }
 }
 .brand-icon.lg { width: 56px; height: 56px; font-size: 18px; margin: 0 auto 12px; }
 
-.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+.sidebar-nav { flex: 1; padding: 8px 0 16px; overflow-y: auto; }
+
+.nav-group { padding: 4px 0 8px; }
+.nav-group + .nav-group {
+    margin-top: 4px;
+    border-top: 1px solid rgba(255,255,255,.06);
+    padding-top: 10px;
+}
+
+.nav-group-label {
+    padding: 6px 20px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: rgba(203, 213, 225, 0.55);
+}
 
 .nav-link {
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 20px;
+    padding: 9px 20px;
     color: var(--sidebar-text);
     text-decoration: none;
     font-size: 14px;
@@ -677,6 +693,14 @@ body.sidebar-open .sidebar-toggle-bar:nth-child(3) {
 .btn-block { width: 100%; }
 
 .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.import-error-list {
+    margin: 0;
+    padding-left: 18px;
+    color: #991b1b;
+    font-size: 13px;
+}
+.import-error-list li + li { margin-top: 2px; }
 
 /* Cards */
 .card {
