@@ -223,3 +223,59 @@ CREATE TABLE IF NOT EXISTS announcements (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS sms_notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    bill_id INT NULL,
+    customer_id INT NULL,
+    phone VARCHAR(20) NOT NULL,
+    notification_type ENUM('due','overdue','test','manual') NOT NULL DEFAULT 'due',
+    message TEXT NOT NULL,
+    status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'pending',
+    provider_message_id VARCHAR(50) NULL,
+    provider_response TEXT NULL,
+    error_message TEXT NULL,
+    sent_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_sms_bill_type (bill_id, notification_type),
+    INDEX idx_sms_customer (customer_id),
+    INDEX idx_sms_status (status),
+    INDEX idx_sms_created (created_at),
+    FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE SET NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS employee_ledgers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    employee_name VARCHAR(100) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    user_id INT NULL,
+    is_visible TINYINT(1) NOT NULL DEFAULT 0,
+    in_label VARCHAR(100) NOT NULL DEFAULT 'Hatagon Beben',
+    out_label VARCHAR(100) NOT NULL DEFAULT 'Utang',
+    balance_as_of DATE NULL,
+    notes TEXT NULL,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ledger_user (user_id),
+    INDEX idx_ledger_visible (is_visible),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS employee_ledger_entries (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ledger_id INT NOT NULL,
+    entry_date DATE NULL,
+    date_display VARCHAR(100) NULL,
+    description VARCHAR(255) NOT NULL DEFAULT '',
+    amount_in DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    amount_out DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    row_type ENUM('entry','year_header','end_marker') NOT NULL DEFAULT 'entry',
+    highlight ENUM('none','opening','year') NOT NULL DEFAULT 'none',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ledger_entries_order (ledger_id, sort_order),
+    FOREIGN KEY (ledger_id) REFERENCES employee_ledgers(id) ON DELETE CASCADE
+);

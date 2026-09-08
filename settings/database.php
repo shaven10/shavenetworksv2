@@ -42,6 +42,7 @@ require __DIR__ . '/../includes/header.php';
         <p>Owner-only database management, backup, and restore</p>
     </div>
     <div class="header-actions">
+        <a href="<?= APP_URL ?>/settings/api.php" class="btn btn-outline btn-sm">API Settings</a>
         <a href="<?= APP_URL ?>/settings/theme.php" class="btn btn-outline btn-sm">Theme Manager</a>
     </div>
 </div>

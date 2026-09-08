@@ -141,7 +141,7 @@ function canAccess(string $module): bool
     }
 
     $permissions = [
-        'owner' => ['dashboard', 'customers', 'plans', 'billing', 'payments', 'remittances', 'users', 'reports', 'settings', 'tickets', 'inquiries', 'announcements'],
+        'owner' => ['dashboard', 'customers', 'plans', 'billing', 'payments', 'remittances', 'users', 'reports', 'settings', 'tickets', 'inquiries', 'announcements', 'ledgers'],
         'technical' => ['dashboard', 'customers', 'plans', 'tickets', 'inquiries', 'announcements'],
         'collector' => ['dashboard', 'customers', 'billing', 'payments', 'remittances', 'inquiries', 'announcements'],
         'customer' => ['portal', 'my_account', 'repair_tickets', 'inquiries', 'announcements'],
@@ -238,3 +238,5 @@ require_once __DIR__ . '/customers.php';
 require_once __DIR__ . '/database_tools.php';
 require_once __DIR__ . '/theme.php';
 require_once __DIR__ . '/announcements.php';
+require_once __DIR__ . '/sms.php';
+require_once __DIR__ . '/ledgers.php';

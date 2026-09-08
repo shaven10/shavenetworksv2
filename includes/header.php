@@ -5,6 +5,9 @@ $user = currentUser();
 $flash = getFlash();
 $isCustomer = hasRole('customer');
 $notifications = getHeaderNotifications();
+if (!$isCustomer && function_exists('maybeAutoSendDuePaymentSms')) {
+    maybeAutoSendDuePaymentSms();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en" <?= renderThemeAttributes() ?>>
@@ -36,6 +39,11 @@ $notifications = getHeaderNotifications();
                     <a href="<?= APP_URL ?>/portal/account.php" class="nav-link <?= ($currentPage ?? '') === 'my_account' ? 'active' : '' ?>">
                         <span class="nav-icon">👤</span> My Account
                     </a>
+                    <?php if (userHasVisibleLedger()): ?>
+                    <a href="<?= APP_URL ?>/ledgers/my.php" class="nav-link <?= ($currentPage ?? '') === 'my_ledger' ? 'active' : '' ?>">
+                        <span class="nav-icon">📒</span> My Ledger
+                    </a>
+                    <?php endif; ?>
                     <a href="<?= APP_URL ?>/profile.php" class="nav-link <?= ($currentPage ?? '') === 'profile' ? 'active' : '' ?>">
                         <span class="nav-icon">🖼</span> Profile Photo
                     </a>
@@ -132,11 +140,24 @@ $notifications = getHeaderNotifications();
                     <a href="<?= APP_URL ?>/profile.php" class="nav-link <?= ($currentPage ?? '') === 'profile' ? 'active' : '' ?>">
                         <span class="nav-icon">👤</span> My Profile
                     </a>
+                    <?php if (userHasVisibleLedger()): ?>
+                    <a href="<?= APP_URL ?>/ledgers/my.php" class="nav-link <?= ($currentPage ?? '') === 'my_ledger' ? 'active' : '' ?>">
+                        <span class="nav-icon">📒</span> My Ledger
+                    </a>
+                    <?php endif; ?>
                 </div>
-                <?php if (canAccess('settings') || canAccess('users')): ?>
+                <?php if (canAccess('settings') || canAccess('users') || canAccess('ledgers')): ?>
                 <div class="nav-group">
                     <div class="nav-group-label">System</div>
+                    <?php if (canAccess('ledgers')): ?>
+                    <a href="<?= APP_URL ?>/ledgers/index.php" class="nav-link <?= ($currentPage ?? '') === 'ledgers' ? 'active' : '' ?>">
+                        <span class="nav-icon">📒</span> Employee Ledgers
+                    </a>
+                    <?php endif; ?>
                     <?php if (canAccess('settings')): ?>
+                    <a href="<?= APP_URL ?>/settings/api.php" class="nav-link <?= ($currentPage ?? '') === 'api_settings' ? 'active' : '' ?>">
+                        <span class="nav-icon">📱</span> API Settings
+                    </a>
                     <a href="<?= APP_URL ?>/settings/theme.php" class="nav-link <?= ($currentPage ?? '') === 'theme_manager' ? 'active' : '' ?>">
                         <span class="nav-icon">🎨</span> Theme Manager
                     </a>

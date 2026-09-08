@@ -2322,7 +2322,109 @@ body.modal-open { overflow: hidden; }
     .sidebar, .page-header, .no-print, .alert, .main-topbar, .sidebar-toggle, .sidebar-backdrop { display: none !important; }
     .main-content { margin: 0 !important; padding: 0 !important; max-width: none !important; }
     .app-layout { display: block; }
-    .card { box-shadow: none; border: none; }
+    .card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+    .report-document { color: #000; }
+    .report-doc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #222; }
+    .report-stats .stat-card { box-shadow: none; border: 1px solid #ccc; }
+    .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    a { text-decoration: none; color: inherit; }
+
+    .ledger-print-card {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+    .ledger-col-actions,
+    .ledger-actions {
+        display: none !important;
+    }
+    .ledger-sheet {
+        color: #000;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ledger-table th,
+    .ledger-table td {
+        border-color: #000 !important;
+    }
+    .ledger-row-opening td {
+        background: #fde68a !important;
+    }
+    .ledger-row-year td,
+    .ledger-year-cell {
+        background: #facc15 !important;
+    }
+    .ledger-row-spacer {
+        display: none;
+    }
+    .ledger-balance-row td {
+        background: #fff7ed !important;
+    }
+}
+
+.report-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.report-doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 4px 2px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.report-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.report-brand small {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.report-doc-meta {
+    text-align: right;
+}
+
+.report-doc-meta h1 {
+    font-size: 1.35rem;
+    margin: 0 0 4px;
+}
+
+.report-doc-meta p {
+    margin: 0;
+    font-weight: 600;
+}
+
+.report-doc-meta small {
+    color: var(--text-muted);
+}
+
+.report-stats {
+    margin-bottom: 20px;
+}
+
+.report-document-print .card {
+    margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+    .report-doc-header {
+        flex-direction: column;
+    }
+    .report-doc-meta {
+        text-align: left;
+    }
 }
 
 @media (max-width: 1024px) {
@@ -2557,4 +2659,147 @@ body.modal-open { overflow: hidden; }
 @media (max-width: 768px) {
     .invoice-header, .invoice-parties { grid-template-columns: 1fr; }
     .invoice-meta { text-align: left; }
+}
+
+/* Employee ledger sheet (spreadsheet-style) */
+.ledger-sheet {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background: #fff;
+    color: #111;
+}
+
+.ledger-sheet-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 1.15rem;
+    padding: 14px 12px 10px;
+    border-bottom: 2px solid #222;
+}
+
+.ledger-table-wrap {
+    overflow-x: auto;
+}
+
+.ledger-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.ledger-table col.ledger-col-date { width: 18%; }
+.ledger-table col.ledger-col-desc { width: 44%; }
+.ledger-table col.ledger-col-amt { width: 19%; }
+.ledger-table.is-editable col.ledger-col-date { width: 15%; }
+.ledger-table.is-editable col.ledger-col-desc { width: 34%; }
+.ledger-table.is-editable col.ledger-col-amt { width: 14%; }
+.ledger-table.is-editable col.ledger-col-actions { width: 23%; }
+
+.ledger-table th,
+.ledger-table td {
+    border: 1px solid #333;
+    padding: 7px 8px;
+    vertical-align: middle;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    position: static;
+}
+
+.ledger-table thead th {
+    background: #f3f4f6;
+    text-align: center;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+
+.ledger-table tbody tr {
+    page-break-inside: avoid;
+}
+
+.ledger-subhead {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-top: 2px;
+    line-height: 1.2;
+}
+
+.ledger-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+.ledger-row-opening td {
+    background: #fde68a;
+}
+
+.ledger-row-year td,
+.ledger-year-cell {
+    background: #facc15 !important;
+    text-align: center;
+    font-weight: 700;
+}
+
+.ledger-row-end td,
+.ledger-end-cell {
+    text-align: center;
+    font-style: italic;
+    color: #444;
+}
+
+.ledger-total-row td,
+.ledger-grand-row td {
+    background: #f8fafc;
+}
+
+.ledger-balance-row td {
+    background: #fff7ed;
+    font-size: 14px;
+    padding: 10px 12px;
+}
+
+.ledger-as-of {
+    margin-left: 6px;
+    font-weight: 500;
+    color: #444;
+}
+
+.ledger-actions {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.ledger-action-btns {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: center;
+    align-items: center;
+}
+
+.ledger-delete-form {
+    display: inline;
+    margin: 0;
+}
+
+.ledger-action-btns .btn {
+    min-height: 0;
+    padding: 3px 8px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .ledger-sheet-title { font-size: 1rem; }
+    .ledger-table { font-size: 12px; }
+    .ledger-table.is-editable col.ledger-col-actions,
+    .ledger-table.is-editable th:last-child,
+    .ledger-table.is-editable td.ledger-actions {
+        display: none;
+    }
 }

@@ -43,6 +43,7 @@ require __DIR__ . '/../includes/header.php';
         <p>Customize colors, appearance, and layout styling for the entire application</p>
     </div>
     <div class="header-actions">
+        <a href="<?= APP_URL ?>/settings/api.php" class="btn btn-outline btn-sm">API Settings</a>
         <a href="<?= APP_URL ?>/settings/database.php" class="btn btn-outline btn-sm">Database Tools</a>
     </div>
 </div>
