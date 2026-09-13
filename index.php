@@ -20,8 +20,12 @@ $canAccessPayments = canAccess('payments');
 $canAccessPlans = canAccess('plans');
 
 $collectionsSeries = fillMonthlySeries($analytics['monthly_collections'], 'total');
+$installSeries = fillMonthlySeries($analytics['installations_by_month'], 'count');
 $currentMonthFrom = date('Y-m-01');
 $currentMonthTo = date('Y-m-d');
+$currentMonthKey = date('Y-m');
+$reportsUrl = APP_URL . '/reports/index.php?month=' . urlencode($currentMonthKey);
+$canAccessReports = canAccess('reports');
 
 $customerStatusLinks = [
     APP_URL . '/customers/index.php?status=active',
@@ -42,8 +46,21 @@ $planSubscriberLinks = array_map(
 );
 
 $collectionsLinks = array_map(
-    static fn(array $row): string => APP_URL . '/payments/index.php?from=' . $row['from'] . '&to=' . $row['to'],
+    static fn(array $row): string => $canAccessReports
+        ? APP_URL . '/reports/index.php?month=' . urlencode(substr($row['from'], 0, 7))
+        : APP_URL . '/payments/index.php?from=' . $row['from'] . '&to=' . $row['to'],
     $collectionsSeries
+);
+
+$paymentMethodLinks = array_map(
+    static fn(array $row): string => APP_URL . '/payments/index.php?payment_method=' . urlencode((string) $row['payment_method'])
+        . '&from=' . urlencode($currentMonthFrom) . '&to=' . urlencode($currentMonthTo),
+    $analytics['payment_methods']
+);
+
+$installLinks = array_map(
+    static fn(array $row): string => APP_URL . '/customers/index.php',
+    $installSeries
 );
 
 $chartData = [
@@ -76,7 +93,39 @@ $chartData = [
         'values' => array_map('intval', array_column($analytics['plan_subscribers'], 'count')),
         'links'  => $planSubscriberLinks,
     ],
+    'paymentMethods' => [
+        'labels' => array_map(
+            static fn(array $row): string => ucfirst(str_replace('_', ' ', (string) $row['payment_method'])),
+            $analytics['payment_methods']
+        ),
+        'values' => array_map(static fn(array $row): float => (float) $row['total'], $analytics['payment_methods']),
+        'links'  => $paymentMethodLinks,
+    ],
+    'installations' => [
+        'labels' => array_column($installSeries, 'label'),
+        'values' => array_column($installSeries, 'value'),
+        'links'  => $installLinks,
+    ],
 ];
+
+$monthCollectionTotal = 0.0;
+foreach ($collectionsSeries as $row) {
+    if ($row['from'] === $currentMonthFrom) {
+        $monthCollectionTotal = (float) $row['value'];
+        break;
+    }
+}
+$paymentMethodTotal = array_sum(array_map(
+    static fn(array $row): float => (float) $row['total'],
+    $analytics['payment_methods']
+));
+$installThisMonth = 0;
+foreach ($installSeries as $row) {
+    if ($row['from'] === $currentMonthFrom) {
+        $installThisMonth = (int) $row['value'];
+        break;
+    }
+}
 
 $extraScripts = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>'
     . '<script>window.dashboardData = ' . json_encode($chartData) . ';</script>'
@@ -188,6 +237,50 @@ require __DIR__ . '/includes/header.php';
     </div>
 </section>
 
+<?php if ($canSeeFinancials): ?>
+<section class="dashboard-section">
+    <div class="section-title-row">
+        <h2 class="section-title">Sales Snapshot</h2>
+        <?php if ($canAccessReports): ?>
+        <a href="<?= e($reportsUrl) ?>" class="btn btn-sm btn-outline">Open Reports</a>
+        <?php endif; ?>
+    </div>
+    <div class="stats-grid stats-grid-simple">
+        <?php if ($canAccessReports): ?>
+        <a href="<?= e($reportsUrl) ?>" class="stat-card stat-simple stat-info dashboard-stat-link">
+            <div class="stat-value"><?= formatMoney($monthCollectionTotal ?: (float) $stats['monthly_revenue']) ?></div>
+            <div class="stat-label">Month Collections</div>
+            <div class="stat-sub">View full sales report</div>
+        </a>
+        <a href="<?= e($reportsUrl) ?>#report-methods" class="stat-card stat-simple dashboard-stat-link">
+            <div class="stat-value"><?= number_format(count($analytics['payment_methods'])) ?></div>
+            <div class="stat-label">Payment Channels</div>
+            <div class="stat-sub"><?= formatMoney((float) $paymentMethodTotal) ?> lifetime</div>
+        </a>
+        <a href="<?= e($reportsUrl) ?>#report-overdue" class="stat-card stat-simple stat-danger dashboard-stat-link">
+            <div class="stat-value"><?= formatMoney((float) $stats['outstanding']) ?></div>
+            <div class="stat-label">Outstanding AR</div>
+            <div class="stat-sub"><?= number_format((int) $stats['overdue_bills']) ?> overdue bills</div>
+        </a>
+        <a href="<?= e($reportsUrl) ?>" class="stat-card stat-simple stat-success dashboard-stat-link">
+            <div class="stat-value"><?= number_format($installThisMonth) ?></div>
+            <div class="stat-label">Installs This Month</div>
+            <div class="stat-sub"><?= $stats['collection_rate'] ?>% collection rate</div>
+        </a>
+        <?php else: ?>
+        <div class="stat-card stat-simple stat-info">
+            <div class="stat-value"><?= formatMoney($monthCollectionTotal ?: (float) $stats['monthly_revenue']) ?></div>
+            <div class="stat-label">Month Collections</div>
+        </div>
+        <div class="stat-card stat-simple">
+            <div class="stat-value"><?= number_format(count($analytics['payment_methods'])) ?></div>
+            <div class="stat-label">Payment Channels</div>
+        </div>
+        <?php endif; ?>
+    </div>
+</section>
+<?php endif; ?>
+
 <section class="dashboard-section">
     <div class="charts-grid charts-grid-simple">
         <div class="card chart-card dashboard-chart-card">
@@ -227,12 +320,36 @@ require __DIR__ . '/includes/header.php';
         <div class="card chart-card dashboard-chart-card">
             <div class="card-header">
                 <h2>Collections (6 Months)</h2>
-                <?php if ($canAccessPayments): ?>
+                <?php if ($canAccessReports): ?>
+                <a href="<?= e($reportsUrl) ?>" class="btn btn-sm btn-outline">Reports</a>
+                <?php elseif ($canAccessPayments): ?>
                 <a href="<?= APP_URL ?>/payments/index.php" class="btn btn-sm btn-outline">Browse</a>
                 <?php endif; ?>
             </div>
             <div class="chart-wrap chart-wrap-sm"><canvas id="chartCollections"></canvas></div>
-            <p class="dashboard-chart-hint">Click a point to browse payments for that month</p>
+            <p class="dashboard-chart-hint">Click a point to open that month’s sales report</p>
+        </div>
+
+        <div class="card chart-card dashboard-chart-card">
+            <div class="card-header">
+                <h2>Sales by Payment Method</h2>
+                <?php if ($canAccessReports): ?>
+                <a href="<?= e($reportsUrl) ?>#report-methods" class="btn btn-sm btn-outline">Reports</a>
+                <?php endif; ?>
+            </div>
+            <div class="chart-wrap chart-wrap-sm"><canvas id="chartPaymentMethods"></canvas></div>
+            <p class="dashboard-chart-hint">Click a bar to filter payments by method</p>
+        </div>
+
+        <div class="card chart-card dashboard-chart-card">
+            <div class="card-header">
+                <h2>Installations (6 Months)</h2>
+                <?php if ($canAccessCustomers): ?>
+                <a href="<?= APP_URL ?>/customers/index.php" class="btn btn-sm btn-outline">Browse</a>
+                <?php endif; ?>
+            </div>
+            <div class="chart-wrap chart-wrap-sm"><canvas id="chartInstallations"></canvas></div>
+            <p class="dashboard-chart-hint">New installs trend by month</p>
         </div>
         <?php endif; ?>
     </div>

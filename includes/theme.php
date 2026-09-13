@@ -121,7 +121,7 @@ function saveAppTheme(array $data): void
         'sidebar_bg'   => sanitizeHexColor($data['sidebar_bg'] ?? $preset['sidebar_bg'], $preset['sidebar_bg']),
         'accent'       => sanitizeHexColor($data['accent'] ?? $preset['accent'], $preset['accent']),
         'radius'       => max(4, min(16, (int) ($data['radius'] ?? 8))),
-        'font_family'  => in_array($data['font_family'] ?? 'system', ['system', 'serif', 'mono'], true)
+        'font_family'  => in_array($data['font_family'] ?? 'system', ['system', 'native', 'serif', 'mono'], true)
             ? $data['font_family'] : 'system',
     ]);
 
@@ -140,10 +140,20 @@ function sanitizeHexColor(string $value, string $fallback): string
 function themeFontStack(string $family): string
 {
     return match ($family) {
-        'serif' => "Georgia, 'Times New Roman', serif",
-        'mono'  => "Consolas, 'Courier New', monospace",
-        default => "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        'serif'  => "'Source Serif 4', Georgia, 'Times New Roman', serif",
+        'mono'   => "'IBM Plex Mono', ui-monospace, Consolas, monospace",
+        'native' => "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        default  => "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif",
     };
+}
+
+function renderFontLinks(): string
+{
+    return <<<HTML
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+HTML;
 }
 
 function renderThemeAttributes(): string
@@ -200,6 +210,7 @@ function renderThemeStyles(): string
     --danger-zone-bg: {$dangerZoneBg};
     --danger-zone-border: {$dangerZoneBorder};
     --font-family: {$font};
+    --font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
     --nav-active-bg: color-mix(in srgb, {$theme['primary']} 25%, transparent);
 }
 CSS;

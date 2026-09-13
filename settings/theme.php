@@ -84,10 +84,12 @@ require __DIR__ . '/../includes/header.php';
             <div class="form-group">
                 <label for="font_family">Font Style</label>
                 <select name="font_family" id="font_family">
-                    <option value="system" <?= $theme['font_family'] === 'system' ? 'selected' : '' ?>>System Default</option>
-                    <option value="serif" <?= $theme['font_family'] === 'serif' ? 'selected' : '' ?>>Serif</option>
-                    <option value="mono" <?= $theme['font_family'] === 'mono' ? 'selected' : '' ?>>Monospace</option>
+                    <option value="system" <?= $theme['font_family'] === 'system' ? 'selected' : '' ?>>IBM Plex Sans (Recommended)</option>
+                    <option value="native" <?= $theme['font_family'] === 'native' ? 'selected' : '' ?>>System UI</option>
+                    <option value="serif" <?= $theme['font_family'] === 'serif' ? 'selected' : '' ?>>Source Serif</option>
+                    <option value="mono" <?= $theme['font_family'] === 'mono' ? 'selected' : '' ?>>IBM Plex Mono</option>
                 </select>
+                <span class="form-hint">Plex Sans is optimized for screen reading and dense data tables.</span>
             </div>
 
             <div class="form-group">

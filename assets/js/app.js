@@ -60,9 +60,124 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     initMobileSidebar();
+    initCollapsibleNav();
     initThemeManager();
     initNotifications();
 });
+
+function initCollapsibleNav() {
+    var nav = document.getElementById('sidebar-nav');
+    var collapseBtn = document.getElementById('sidebar-collapse-btn');
+    var expandAllBtn = document.getElementById('nav-expand-all');
+    var collapseAllBtn = document.getElementById('nav-collapse-all');
+    var storageKey = 'sn_nav_groups_v2';
+    var sidebarKey = 'sn_sidebar_collapsed';
+    var saved = {};
+
+    function persistGroups() {
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(saved));
+        } catch (err) {}
+    }
+
+    function setGroupCollapsed(group, toggle, collapsed) {
+        group.classList.toggle('is-collapsed', collapsed);
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        }
+    }
+
+    function setAllGroups(collapsed) {
+        if (!nav) {
+            return;
+        }
+        nav.querySelectorAll('.nav-group').forEach(function (group) {
+            var key = group.getAttribute('data-nav-group') || '';
+            var toggle = group.querySelector('.nav-group-toggle');
+            var hasActive = !!group.querySelector('.nav-link.active');
+            var next = collapsed;
+            // Keep the current page section open even on collapse-all
+            if (collapsed && hasActive) {
+                next = false;
+            }
+            setGroupCollapsed(group, toggle, next);
+            saved[key] = next;
+        });
+        persistGroups();
+    }
+
+    if (nav) {
+        try {
+            saved = JSON.parse(localStorage.getItem(storageKey) || '{}') || {};
+        } catch (e) {
+            saved = {};
+        }
+
+        nav.querySelectorAll('.nav-link').forEach(function (link) {
+            var label = link.querySelector('.nav-link-text');
+            if (label && !link.getAttribute('title')) {
+                link.setAttribute('title', label.textContent.trim());
+            }
+        });
+
+        nav.querySelectorAll('.nav-group').forEach(function (group) {
+            var key = group.getAttribute('data-nav-group') || '';
+            var toggle = group.querySelector('.nav-group-toggle');
+            var hasActive = !!group.querySelector('.nav-link.active');
+            // First load (no saved preference): expand all
+            var collapsed = Object.prototype.hasOwnProperty.call(saved, key)
+                ? saved[key] === true
+                : false;
+
+            group.classList.toggle('has-active', hasActive);
+
+            if (hasActive) {
+                collapsed = false;
+            }
+
+            setGroupCollapsed(group, toggle, collapsed);
+
+            if (toggle) {
+                toggle.addEventListener('click', function () {
+                    var next = !group.classList.contains('is-collapsed');
+                    setGroupCollapsed(group, toggle, next);
+                    saved[key] = next;
+                    persistGroups();
+                });
+            }
+        });
+    }
+
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', function () {
+            setAllGroups(false);
+        });
+    }
+    if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', function () {
+            setAllGroups(true);
+        });
+    }
+
+    if (collapseBtn) {
+        try {
+            if (localStorage.getItem(sidebarKey) === '1' && window.innerWidth > 900) {
+                document.body.classList.add('sidebar-collapsed');
+                collapseBtn.setAttribute('aria-label', 'Expand sidebar');
+                collapseBtn.title = 'Expand menu';
+            }
+        } catch (e) {}
+
+        collapseBtn.addEventListener('click', function () {
+            var collapsed = document.body.classList.toggle('sidebar-collapsed');
+            collapseBtn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+            collapseBtn.title = collapsed ? 'Expand menu' : 'Collapse menu';
+            try {
+                localStorage.setItem(sidebarKey, collapsed ? '1' : '0');
+            } catch (err) {}
+        });
+    }
+}
 
 function initMobileSidebar() {
     var toggle = document.getElementById('sidebar-toggle');
@@ -120,6 +235,8 @@ function initMobileSidebar() {
     window.addEventListener('resize', function () {
         if (window.innerWidth > 900) {
             closeSidebar();
+        } else {
+            document.body.classList.remove('sidebar-collapsed');
         }
     });
 }
@@ -197,11 +314,13 @@ function initThemeManager() {
         var radius = radiusInput ? radiusInput.value : '8';
         var fontFamily = document.getElementById('font_family').value;
 
-        var fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        var fontStack = "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif";
         if (fontFamily === 'serif') {
-            fontStack = "Georgia, 'Times New Roman', serif";
+            fontStack = "'Source Serif 4', Georgia, 'Times New Roman', serif";
         } else if (fontFamily === 'mono') {
-            fontStack = "Consolas, 'Courier New', monospace";
+            fontStack = "'IBM Plex Mono', ui-monospace, Consolas, monospace";
+        } else if (fontFamily === 'native') {
+            fontStack = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         }
 
         var bg = isDark ? '#0f172a' : '#f1f5f9';
@@ -222,6 +341,7 @@ function initThemeManager() {
             + '    --sidebar-bg: ' + sidebarBg + ';\n'
             + '    --radius: ' + radius + 'px;\n'
             + '    --font-family: ' + fontStack + ';\n'
+            + '    --font-mono: \'IBM Plex Mono\', ui-monospace, Consolas, monospace;\n'
             + '    --nav-active-bg: color-mix(in srgb, ' + primary + ' 25%, transparent);\n'
             + '}';
     }

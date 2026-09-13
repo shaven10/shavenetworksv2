@@ -13,7 +13,7 @@
         gray: '#94a3b8'
     };
 
-    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    Chart.defaults.font.family = "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif";
     Chart.defaults.color = '#64748b';
 
     function navigateTo(url) {
@@ -166,6 +166,24 @@
             data.monthlyCollections.labels,
             data.monthlyCollections.values,
             data.monthlyCollections.links
+        );
+    }
+
+    if (data.paymentMethods && data.paymentMethods.labels.length) {
+        barChart(
+            'chartPaymentMethods',
+            data.paymentMethods.labels,
+            data.paymentMethods.values,
+            data.paymentMethods.links
+        );
+    }
+
+    if (data.installations) {
+        lineChart(
+            'chartInstallations',
+            data.installations.labels,
+            data.installations.values,
+            data.installations.links
         );
     }
 

@@ -1,0 +1,12 @@
+{
+    "label": "Default customers & service plans",
+    "created_at": "2026-09-13 21:06:09",
+    "updated_at": "2026-09-13 21:06:09",
+    "plan_count": 5,
+    "customer_count": 73,
+    "is_default": true,
+    "scope": [
+        "service_plans",
+        "customers"
+    ]
+}

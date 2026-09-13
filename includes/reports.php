@@ -52,7 +52,7 @@ function getReportsData(string $month): array
     $byCollector = $stmt->fetchAll() ?: [];
 
     $planStats = $db->query(
-        'SELECT p.name, p.monthly_fee, COUNT(c.id) AS subscribers,
+        'SELECT p.id, p.name, p.monthly_fee, COUNT(c.id) AS subscribers,
                 SUM(CASE WHEN c.status = "active" THEN 1 ELSE 0 END) AS active_subs
          FROM service_plans p
          LEFT JOIN customers c ON p.id = c.plan_id
@@ -279,19 +279,44 @@ function renderReportDocument(array $data, bool $forPrint = false): void
         </div>
 
         <div class="stats-grid report-stats">
-            <div class="stat-card stat-info">
+            <a href="<?= APP_URL ?>/payments/index.php?from=<?= e(urlencode($bounds['month_start'])) ?>&to=<?= e(urlencode($bounds['month_end'])) ?>"
+               class="stat-card stat-info dashboard-stat-link" id="report-collections">
                 <div class="stat-value"><?= formatMoney((float) $data['monthly_collections']['total']) ?></div>
                 <div class="stat-label">Collections (<?= e($monthLabel) ?>)</div>
-            </div>
-            <div class="stat-card">
+                <div class="stat-sub">Open payments for this month</div>
+            </a>
+            <a href="<?= APP_URL ?>/payments/index.php?from=<?= e(urlencode($bounds['month_start'])) ?>&to=<?= e(urlencode($bounds['month_end'])) ?>"
+               class="stat-card dashboard-stat-link">
                 <div class="stat-value"><?= (int) $data['monthly_collections']['count'] ?></div>
                 <div class="stat-label">Payments Received</div>
-            </div>
-            <div class="stat-card stat-danger">
+                <div class="stat-sub">Browse payment records</div>
+            </a>
+            <a href="<?= APP_URL ?>/billing/index.php?status=overdue" class="stat-card stat-danger dashboard-stat-link" id="report-overdue">
                 <div class="stat-value"><?= formatMoney((float) $data['overdue_total']) ?></div>
                 <div class="stat-label">Total Overdue</div>
+                <div class="stat-sub">View overdue bills</div>
+            </a>
+        </div>
+
+        <?php if (!$forPrint): ?>
+        <div class="charts-grid charts-grid-simple report-charts no-print" id="report-methods">
+            <div class="card chart-card dashboard-chart-card">
+                <div class="card-header"><h2>Collections by Method</h2></div>
+                <div class="chart-wrap chart-wrap-sm"><canvas id="reportChartMethods"></canvas></div>
+                <p class="dashboard-chart-hint">Click a bar to filter payments by method</p>
+            </div>
+            <div class="card chart-card dashboard-chart-card">
+                <div class="card-header"><h2>Collections by Collector</h2></div>
+                <div class="chart-wrap chart-wrap-sm"><canvas id="reportChartCollectors"></canvas></div>
+                <p class="dashboard-chart-hint">Click a bar to browse this month’s payments</p>
+            </div>
+            <div class="card chart-card dashboard-chart-card">
+                <div class="card-header"><h2>Plan Mix</h2></div>
+                <div class="chart-wrap chart-wrap-sm"><canvas id="reportChartPlans"></canvas></div>
+                <p class="dashboard-chart-hint">Click a segment to browse subscribers on that plan</p>
             </div>
         </div>
+        <?php endif; ?>
 
         <div class="grid-2 report-grid">
             <div class="card">
@@ -303,7 +328,8 @@ function renderReportDocument(array $data, bool $forPrint = false): void
                             <?php if (empty($data['by_method'])): ?>
                             <tr><td colspan="3" class="text-muted text-center">No data.</td></tr>
                             <?php else: foreach ($data['by_method'] as $row): ?>
-                            <tr>
+                            <tr class="dashboard-row-link" tabindex="0" role="link"
+                                data-href="<?= APP_URL ?>/payments/index.php?payment_method=<?= e(urlencode((string) $row['payment_method'])) ?>&from=<?= e(urlencode($bounds['month_start'])) ?>&to=<?= e(urlencode($bounds['month_end'])) ?>">
                                 <td><?= e(paymentMethodLabel((string) $row['payment_method'])) ?></td>
                                 <td><?= (int) $row['count'] ?></td>
                                 <td><?= formatMoney((float) $row['total']) ?></td>
@@ -323,7 +349,8 @@ function renderReportDocument(array $data, bool $forPrint = false): void
                             <?php if (empty($data['by_collector'])): ?>
                             <tr><td colspan="3" class="text-muted text-center">No data.</td></tr>
                             <?php else: foreach ($data['by_collector'] as $row): ?>
-                            <tr>
+                            <tr class="dashboard-row-link" tabindex="0" role="link"
+                                data-href="<?= APP_URL ?>/payments/index.php?from=<?= e(urlencode($bounds['month_start'])) ?>&to=<?= e(urlencode($bounds['month_end'])) ?>">
                                 <td><?= e($row['full_name']) ?></td>
                                 <td><?= (int) $row['count'] ?></td>
                                 <td><?= formatMoney((float) $row['total']) ?></td>
@@ -352,7 +379,8 @@ function renderReportDocument(array $data, bool $forPrint = false): void
                         <?php if (empty($data['plan_stats'])): ?>
                         <tr><td colspan="5" class="text-muted text-center">No plans found.</td></tr>
                         <?php else: foreach ($data['plan_stats'] as $row): ?>
-                        <tr>
+                        <tr class="dashboard-row-link" tabindex="0" role="link"
+                            data-href="<?= APP_URL ?>/customers/index.php?plan_id=<?= (int) $row['id'] ?>">
                             <td><?= e($row['name']) ?></td>
                             <td><?= formatMoney((float) $row['monthly_fee']) ?></td>
                             <td><?= (int) $row['subscribers'] ?></td>

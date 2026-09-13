@@ -59,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Customer Signup - <?= e(APP_NAME) ?></title>
+    <?= renderFontLinks() ?>
     <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/style.css">
     <style id="app-theme"><?= renderThemeStyles() ?></style>
 </head>

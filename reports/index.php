@@ -11,6 +11,45 @@ $month = $_GET['month'] ?? date('Y-m');
 $data = getReportsData($month);
 $bounds = $data['bounds'];
 
+$reportCharts = [
+    'methods' => [
+        'labels' => array_map(
+            static fn(array $row): string => paymentMethodLabel((string) $row['payment_method']),
+            $data['by_method']
+        ),
+        'values' => array_map(static fn(array $row): float => (float) $row['total'], $data['by_method']),
+        'links' => array_map(
+            static fn(array $row): string => APP_URL . '/payments/index.php?payment_method='
+                . urlencode((string) $row['payment_method'])
+                . '&from=' . urlencode($bounds['month_start'])
+                . '&to=' . urlencode($bounds['month_end']),
+            $data['by_method']
+        ),
+    ],
+    'collectors' => [
+        'labels' => array_column($data['by_collector'], 'full_name'),
+        'values' => array_map(static fn(array $row): float => (float) $row['total'], $data['by_collector']),
+        'links' => array_fill(
+            0,
+            count($data['by_collector']),
+            APP_URL . '/payments/index.php?from=' . urlencode($bounds['month_start'])
+                . '&to=' . urlencode($bounds['month_end'])
+        ),
+    ],
+    'plans' => [
+        'labels' => array_column($data['plan_stats'], 'name'),
+        'values' => array_map(static fn(array $row): int => (int) $row['active_subs'], $data['plan_stats']),
+        'links' => array_map(
+            static fn(array $row): string => APP_URL . '/customers/index.php?plan_id=' . (int) $row['id'],
+            $data['plan_stats']
+        ),
+    ],
+];
+
+$extraScripts = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>'
+    . '<script>window.reportChartData = ' . json_encode($reportCharts) . ';</script>'
+    . '<script src="' . APP_URL . '/assets/js/reports.js"></script>';
+
 require __DIR__ . '/../includes/header.php';
 ?>
 

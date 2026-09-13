@@ -169,7 +169,11 @@ function getTotalUserCount(?int $excludeUserId = null): int
 
 function getUserDeleteSummary(int $userId): array
 {
-    ensureUserDeleteDependencies();
+    try {
+        ensureUserDeleteDependencies();
+    } catch (Throwable $e) {
+        // Continue with best-effort counts even if optional tables fail to create.
+    }
 
     return [
         'payments'              => userReferenceCount('payments', 'collected_by', $userId),
@@ -249,12 +253,22 @@ function renderUserDeleteSection(array $user): void
         return;
     }
 
-    $summary = [];
+    $summary = [
+        'payments'              => 0,
+        'payment_batches'       => 0,
+        'remittances_submitted' => 0,
+        'customers_created'     => 0,
+        'tickets_created'       => 0,
+        'tickets_assigned'      => 0,
+        'inquiries_created'     => 0,
+        'inquiries_responded'   => 0,
+        'activity_logs'         => 0,
+    ];
     if ($status['allowed']) {
         try {
-            $summary = getUserDeleteSummary($userId);
+            $summary = array_merge($summary, getUserDeleteSummary($userId));
         } catch (Throwable $e) {
-            $summary = [];
+            // Keep zeroed summary if dependency checks fail.
         }
     }
     ?>
@@ -271,17 +285,17 @@ function renderUserDeleteSection(array $user): void
         Historical records such as payments and remittances will be reassigned to another owner account.
     </p>
     <ul class="delete-summary">
-        <?php if ($summary['payments']): ?><li><?= number_format($summary['payments']) ?> payment record(s)</li><?php endif; ?>
-        <?php if ($summary['payment_batches']): ?><li><?= number_format($summary['payment_batches']) ?> batch payment(s)</li><?php endif; ?>
-        <?php if ($summary['remittances_submitted']): ?><li><?= number_format($summary['remittances_submitted']) ?> remittance(s) submitted</li><?php endif; ?>
-        <?php if ($summary['customers_created']): ?><li><?= number_format($summary['customers_created']) ?> customer(s) created</li><?php endif; ?>
-        <?php if ($summary['tickets_created'] || $summary['tickets_assigned']): ?>
-        <li><?= number_format($summary['tickets_created'] + $summary['tickets_assigned']) ?> support ticket link(s)</li>
+        <?php if (!empty($summary['payments'])): ?><li><?= number_format((int) $summary['payments']) ?> payment record(s)</li><?php endif; ?>
+        <?php if (!empty($summary['payment_batches'])): ?><li><?= number_format((int) $summary['payment_batches']) ?> batch payment(s)</li><?php endif; ?>
+        <?php if (!empty($summary['remittances_submitted'])): ?><li><?= number_format((int) $summary['remittances_submitted']) ?> remittance(s) submitted</li><?php endif; ?>
+        <?php if (!empty($summary['customers_created'])): ?><li><?= number_format((int) $summary['customers_created']) ?> customer(s) created</li><?php endif; ?>
+        <?php if (!empty($summary['tickets_created']) || !empty($summary['tickets_assigned'])): ?>
+        <li><?= number_format((int) $summary['tickets_created'] + (int) $summary['tickets_assigned']) ?> support ticket link(s)</li>
         <?php endif; ?>
-        <?php if ($summary['inquiries_created'] || $summary['inquiries_responded']): ?>
-        <li><?= number_format($summary['inquiries_created'] + $summary['inquiries_responded']) ?> inquiry link(s)</li>
+        <?php if (!empty($summary['inquiries_created']) || !empty($summary['inquiries_responded'])): ?>
+        <li><?= number_format((int) $summary['inquiries_created'] + (int) $summary['inquiries_responded']) ?> inquiry link(s)</li>
         <?php endif; ?>
-        <?php if ($summary['activity_logs']): ?><li><?= number_format($summary['activity_logs']) ?> activity log(s)</li><?php endif; ?>
+        <?php if (!empty($summary['activity_logs'])): ?><li><?= number_format((int) $summary['activity_logs']) ?> activity log(s)</li><?php endif; ?>
     </ul>
     <form method="POST" action="<?= APP_URL ?>/users/delete.php" class="delete-account-form">
         <input type="hidden" name="id" value="<?= $userId ?>">
