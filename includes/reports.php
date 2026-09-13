@@ -175,6 +175,18 @@ function buildReportsExcel(array $data): string
         'Plans'      => buildXlsxSheetXml($plans),
     ];
 
+    return buildWorkbookXlsx($sheets);
+}
+
+/**
+ * @param array<string, string> $sheets Map of sheet name => worksheet XML
+ */
+function buildWorkbookXlsx(array $sheets): string
+{
+    if (empty($sheets)) {
+        throw new InvalidArgumentException('At least one worksheet is required.');
+    }
+
     $sheetXml = '';
     $relsXml = '';
     $overrides = '';
@@ -212,7 +224,7 @@ function buildReportsExcel(array $data): string
         . $overrides
         . '</Types>';
 
-    $tmp = tempnam(sys_get_temp_dir(), 'snrpt');
+    $tmp = tempnam(sys_get_temp_dir(), 'snxlsx');
     if ($tmp === false) {
         throw new RuntimeException('Unable to create temporary Excel file.');
     }
@@ -220,7 +232,7 @@ function buildReportsExcel(array $data): string
     $zip = new ZipArchive();
     if ($zip->open($tmp, ZipArchive::OVERWRITE) !== true) {
         @unlink($tmp);
-        throw new RuntimeException('Unable to build Excel report.');
+        throw new RuntimeException('Unable to build Excel file.');
     }
 
     $zip->addFromString('[Content_Types].xml', $contentTypes);
@@ -239,7 +251,7 @@ function buildReportsExcel(array $data): string
     @unlink($tmp);
 
     if ($bytes === false) {
-        throw new RuntimeException('Unable to read Excel report.');
+        throw new RuntimeException('Unable to read Excel file.');
     }
 
     return $bytes;

@@ -311,3 +311,271 @@ function renderCustomerDeleteSection(array $customer): void
 </div>
     <?php
 }
+
+function buildCustomerListFilters(string $search = '', string $status = '', int $planId = 0): array
+{
+    $fromWhere = 'FROM customers c JOIN service_plans p ON c.plan_id = p.id WHERE 1=1';
+    $params = [];
+
+    $search = trim($search);
+    if ($search !== '') {
+        $fromWhere .= ' AND (c.full_name LIKE ? OR c.account_number LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)';
+        $like = '%' . $search . '%';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+    }
+
+    if ($status !== '' && in_array($status, ['active', 'suspended', 'disconnected'], true)) {
+        $fromWhere .= ' AND c.status = ?';
+        $params[] = $status;
+    }
+
+    if ($planId > 0) {
+        $fromWhere .= ' AND c.plan_id = ?';
+        $params[] = $planId;
+    }
+
+    return [
+        'from_where' => $fromWhere,
+        'params'     => $params,
+        'search'     => $search,
+        'status'     => $status,
+        'plan_id'    => $planId,
+    ];
+}
+
+function getCustomersForExport(string $search = '', string $status = '', int $planId = 0): array
+{
+    $filters = buildCustomerListFilters($search, $status, $planId);
+    $sql = 'SELECT c.*, p.name AS plan_name, p.monthly_fee, p.speed_mbps
+            ' . $filters['from_where'] . '
+            ORDER BY c.full_name ASC, c.account_number ASC';
+    $stmt = getDB()->prepare($sql);
+    $stmt->execute($filters['params']);
+    return $stmt->fetchAll() ?: [];
+}
+
+function describeCustomerExportFilters(string $search, string $status, int $planId): string
+{
+    $parts = [];
+    if ($search !== '') {
+        $parts[] = 'Search: ' . $search;
+    }
+    if ($status !== '') {
+        $parts[] = 'Status: ' . ucfirst($status);
+    }
+    if ($planId > 0) {
+        $stmt = getDB()->prepare('SELECT name FROM service_plans WHERE id = ?');
+        $stmt->execute([$planId]);
+        $name = $stmt->fetchColumn();
+        if ($name) {
+            $parts[] = 'Plan: ' . $name;
+        }
+    }
+    return $parts ? implode(' · ', $parts) : 'All customers';
+}
+
+function buildCustomersExcel(array $customers, array $meta = []): string
+{
+    require_once __DIR__ . '/reports.php';
+
+    $rows = [[
+        'Account Number',
+        'Full Name',
+        'Phone',
+        'Email',
+        'Plan',
+        'Speed (Mbps)',
+        'Monthly Fee',
+        'Connection',
+        'Status',
+        'Installation Date',
+        'Next Billing',
+        'Address',
+        'Barangay',
+        'City',
+        'Province',
+        'Advance Balance',
+        'Notes',
+    ]];
+
+    foreach ($customers as $c) {
+        $rows[] = [
+            (string) $c['account_number'],
+            (string) $c['full_name'],
+            (string) $c['phone'],
+            (string) ($c['email'] ?? ''),
+            (string) ($c['plan_name'] ?? ''),
+            (int) ($c['speed_mbps'] ?? 0),
+            (float) ($c['monthly_fee'] ?? 0),
+            connectionMediumLabel($c['connection_medium'] ?? null),
+            ucfirst((string) ($c['status'] ?? '')),
+            (string) ($c['installation_date'] ?? ''),
+            function_exists('getNextBillingDate')
+                ? (string) getNextBillingDate($c['installation_date'])
+                : '',
+            (string) ($c['address'] ?? ''),
+            (string) ($c['barangay'] ?? ''),
+            (string) ($c['city'] ?? ''),
+            (string) ($c['province'] ?? ''),
+            (float) ($c['advance_balance'] ?? 0),
+            (string) ($c['notes'] ?? ''),
+        ];
+    }
+
+    $summary = [
+        ['SHAVEN Networks — Customer List'],
+        ['Generated', $meta['generated_at'] ?? date('Y-m-d H:i:s')],
+        ['Filters', $meta['filters_label'] ?? 'All customers'],
+        ['Total Records', count($customers)],
+    ];
+
+    return buildWorkbookXlsx([
+        'Customers' => buildXlsxSheetXml($rows),
+        'Summary'   => buildXlsxSheetXml($summary),
+    ]);
+}
+
+function buildCustomersCsv(array $customers): string
+{
+    $out = fopen('php://temp', 'r+');
+    if ($out === false) {
+        throw new RuntimeException('Unable to build CSV export.');
+    }
+
+    fputcsv($out, [
+        'Account Number', 'Full Name', 'Phone', 'Email', 'Plan', 'Speed (Mbps)', 'Monthly Fee',
+        'Connection', 'Status', 'Installation Date', 'Next Billing', 'Address', 'Barangay',
+        'City', 'Province', 'Advance Balance', 'Notes',
+    ]);
+
+    foreach ($customers as $c) {
+        fputcsv($out, [
+            $c['account_number'],
+            $c['full_name'],
+            $c['phone'],
+            $c['email'] ?? '',
+            $c['plan_name'] ?? '',
+            $c['speed_mbps'] ?? '',
+            $c['monthly_fee'] ?? '',
+            connectionMediumLabel($c['connection_medium'] ?? null),
+            ucfirst((string) ($c['status'] ?? '')),
+            $c['installation_date'] ?? '',
+            function_exists('getNextBillingDate') ? getNextBillingDate($c['installation_date']) : '',
+            $c['address'] ?? '',
+            $c['barangay'] ?? '',
+            $c['city'] ?? '',
+            $c['province'] ?? '',
+            $c['advance_balance'] ?? 0,
+            $c['notes'] ?? '',
+        ]);
+    }
+
+    rewind($out);
+    $csv = stream_get_contents($out);
+    fclose($out);
+
+    if ($csv === false) {
+        throw new RuntimeException('Unable to read CSV export.');
+    }
+
+    return "\xEF\xBB\xBF" . $csv;
+}
+
+function renderCustomersPrintDocument(array $customers, string $filtersLabel, string $generatedAt): void
+{
+    $active = 0;
+    $suspended = 0;
+    $disconnected = 0;
+    foreach ($customers as $c) {
+        match ($c['status'] ?? '') {
+            'active' => $active++,
+            'suspended' => $suspended++,
+            'disconnected' => $disconnected++,
+            default => null,
+        };
+    }
+    ?>
+    <div class="report-document customers-print-doc">
+        <div class="report-doc-header">
+            <div class="report-brand">
+                <div class="brand-icon">SN</div>
+                <div>
+                    <strong>SHAVEN Networks</strong>
+                    <small>ISP Billing System</small>
+                </div>
+            </div>
+            <div class="report-doc-meta">
+                <h1>Customer List</h1>
+                <p><?= e($filtersLabel) ?></p>
+                <small>
+                    <?= number_format(count($customers)) ?> subscribers ·
+                    Generated <?= e(date('M d, Y g:i A', strtotime($generatedAt))) ?>
+                </small>
+            </div>
+        </div>
+
+        <div class="stats-grid report-stats">
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format(count($customers)) ?></div>
+                <div class="stat-label">Total Listed</div>
+            </div>
+            <div class="stat-card stat-info">
+                <div class="stat-value"><?= number_format($active) ?></div>
+                <div class="stat-label">Active</div>
+            </div>
+            <div class="stat-card stat-warning">
+                <div class="stat-value"><?= number_format($suspended) ?></div>
+                <div class="stat-label">Suspended</div>
+            </div>
+            <div class="stat-card stat-danger">
+                <div class="stat-value"><?= number_format($disconnected) ?></div>
+                <div class="stat-label">Disconnected</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-compact customers-export-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Account</th>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th>Plan</th>
+                            <th>Connection</th>
+                            <th>Installed</th>
+                            <th>Fee</th>
+                            <th>Status</th>
+                            <th>Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($customers)): ?>
+                        <tr><td colspan="10" class="text-center text-muted">No customers found.</td></tr>
+                        <?php else: ?>
+                        <?php foreach ($customers as $i => $c): ?>
+                        <tr>
+                            <td><?= $i + 1 ?></td>
+                            <td><?= e($c['account_number']) ?></td>
+                            <td><?= e($c['full_name']) ?></td>
+                            <td><?= e($c['phone']) ?></td>
+                            <td><?= e($c['plan_name'] ?? '') ?></td>
+                            <td><?= e(connectionMediumLabel($c['connection_medium'] ?? null)) ?></td>
+                            <td><?= e(formatDate($c['installation_date'] ?? null)) ?></td>
+                            <td><?= formatMoney((float) ($c['monthly_fee'] ?? 0)) ?></td>
+                            <td><?= e(ucfirst((string) ($c['status'] ?? ''))) ?></td>
+                            <td><?= e(formatCustomerAddress($c)) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php
+}

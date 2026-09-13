@@ -2427,6 +2427,30 @@ body.modal-open { overflow: hidden; }
     }
 }
 
+.customers-export-table {
+    font-size: 12px;
+}
+
+.customers-export-table th,
+.customers-export-table td {
+    padding: 6px 8px;
+}
+
+@media print {
+    .customers-print-doc .card {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+    }
+    .customers-export-table {
+        font-size: 10px;
+    }
+    .customers-export-table th,
+    .customers-export-table td {
+        padding: 4px 5px;
+    }
+}
+
 @media (max-width: 1024px) {
     .grid-2, .grid-3, .permissions-grid, .charts-grid, .theme-layout {
         grid-template-columns: 1fr;

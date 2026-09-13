@@ -121,7 +121,7 @@ require __DIR__ . '/../includes/header.php';
 
 
 
-<div class="page-header">
+<div class="page-header no-print">
 
     <div>
 
@@ -137,14 +137,25 @@ require __DIR__ . '/../includes/header.php';
 
     </div>
 
-    <?php if (hasRole('owner', 'technical')): ?>
     <div class="header-actions">
+        <?php
+        $exportQuery = http_build_query(array_filter([
+            'search'  => $search,
+            'status'  => $status,
+            'plan_id' => $planId ?: null,
+        ], static fn ($v) => $v !== null && $v !== ''));
+        ?>
+        <a href="<?= APP_URL ?>/customers/export.php?format=pdf&<?= e($exportQuery) ?>"
+           class="btn btn-outline" target="_blank" rel="noopener">Print / PDF</a>
+        <a href="<?= APP_URL ?>/customers/export.php?format=excel&<?= e($exportQuery) ?>"
+           class="btn btn-outline">Export Excel</a>
+        <?php if (hasRole('owner', 'technical')): ?>
         <?php if (hasRole('owner')): ?>
         <a href="<?= APP_URL ?>/customers/import.php" class="btn btn-outline">Import Excel</a>
         <?php endif; ?>
         <a href="<?= APP_URL ?>/customers/create.php" class="btn btn-primary">+ Add Customer</a>
+        <?php endif; ?>
     </div>
-    <?php endif; ?>
 </div>
 
 
