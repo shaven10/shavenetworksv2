@@ -172,6 +172,28 @@ require __DIR__ . '/../includes/header.php';
     </p>
 </div>
 
+<?php if (hasRole('owner')): ?>
+<div class="card danger-zone">
+    <div class="card-header"><h2>Delete Bill</h2></div>
+    <p class="danger-intro">
+        Permanently delete <strong><?= e($bill['bill_number']) ?></strong> for
+        <?= e($bill['full_name']) ?> (<?= e($bill['account_number']) ?>).
+        Related payments will also be removed, and any advance credits applied to this bill will be restored.
+    </p>
+    <form method="POST" action="<?= APP_URL ?>/billing/delete.php" class="delete-account-form"
+          onsubmit='return confirm(<?= json_encode('Permanently delete bill ' . $bill['bill_number'] . '?') ?>)'>
+        <input type="hidden" name="scope" value="bill">
+        <input type="hidden" name="bill_id" value="<?= $billId ?>">
+        <input type="hidden" name="customer_id" value="<?= (int) $bill['customer_id'] ?>">
+        <div class="form-group">
+            <label for="delete_bill_confirm">Type DELETE to confirm *</label>
+            <input type="text" id="delete_bill_confirm" name="confirm_text" placeholder="DELETE" autocomplete="off" required>
+        </div>
+        <button type="submit" class="btn btn-danger">Delete Bill</button>
+    </form>
+</div>
+<?php endif; ?>
+
 <div class="modal-overlay" id="revert-payment-modal" hidden>
     <div class="modal-dialog" role="dialog" aria-modal="true">
         <div class="modal-header">

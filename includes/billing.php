@@ -1484,3 +1484,244 @@ function getPaymentCustomersGrouped(array $filters, int $page, int $perPage): ar
         'to'          => min($offset + $perPage, $total),
     ];
 }
+
+function billingTableExists(string $table): bool
+{
+    static $cache = [];
+
+    if (!isset($cache[$table])) {
+        $stmt = getDB()->prepare('SHOW TABLES LIKE ?');
+        $stmt->execute([$table]);
+        $cache[$table] = (bool) $stmt->fetchColumn();
+    }
+
+    return $cache[$table];
+}
+
+function billingPositiveIds(array $ids): array
+{
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+
+    return array_values(array_filter($ids, static fn (int $id) => $id > 0));
+}
+
+function billingListReturnPath(array $post = []): string
+{
+    $query = paginationQuery([
+        'search'      => trim((string) ($post['search'] ?? '')),
+        'status'      => $post['status'] ?? '',
+        'due_from'    => $post['due_from'] ?? '',
+        'due_to'      => $post['due_to'] ?? '',
+        'customer_id' => (int) ($post['filter_customer_id'] ?? 0) ?: '',
+        'per_page'    => $post['per_page'] ?? '',
+        'page'        => $post['page'] ?? '',
+    ]);
+
+    return '/billing/index.php' . ($query ? '?' . http_build_query($query) : '');
+}
+
+function deleteBillingPaymentsByIds(PDO $db, array $paymentIds): int
+{
+    $paymentIds = billingPositiveIds($paymentIds);
+    if (!$paymentIds) {
+        return 0;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($paymentIds), '?'));
+
+    $advanceStmt = $db->prepare(
+        "SELECT customer_id, SUM(amount) AS total
+         FROM payments
+         WHERE id IN ({$placeholders}) AND payment_type = 'advance_applied'
+         GROUP BY customer_id"
+    );
+    $advanceStmt->execute($paymentIds);
+    foreach ($advanceStmt->fetchAll() as $row) {
+        $restore = $db->prepare('UPDATE customers SET advance_balance = advance_balance + ? WHERE id = ?');
+        $restore->execute([(float) $row['total'], (int) $row['customer_id']]);
+    }
+
+    $batchStmt = $db->prepare(
+        "SELECT DISTINCT batch_id FROM payments WHERE id IN ({$placeholders}) AND batch_id IS NOT NULL"
+    );
+    $batchStmt->execute($paymentIds);
+    $batchIds = billingPositiveIds(array_column($batchStmt->fetchAll(), 'batch_id'));
+
+    $remittanceIds = [];
+    if (billingTableExists('remittance_payments')) {
+        $remittanceStmt = $db->prepare(
+            "SELECT DISTINCT remittance_id FROM remittance_payments WHERE payment_id IN ({$placeholders})"
+        );
+        $remittanceStmt->execute($paymentIds);
+        $remittanceIds = billingPositiveIds(array_column($remittanceStmt->fetchAll(), 'remittance_id'));
+
+        $unlink = $db->prepare("DELETE FROM remittance_payments WHERE payment_id IN ({$placeholders})");
+        $unlink->execute($paymentIds);
+    }
+
+    $deletePayments = $db->prepare("DELETE FROM payments WHERE id IN ({$placeholders})");
+    $deletePayments->execute($paymentIds);
+    $deletedCount = $deletePayments->rowCount();
+
+    if ($remittanceIds && billingTableExists('remittances')) {
+        foreach ($remittanceIds as $remittanceId) {
+            $summary = $db->prepare(
+                'SELECT COUNT(p.id) AS payment_count, COALESCE(SUM(p.amount), 0) AS total_amount
+                 FROM remittance_payments rp
+                 JOIN payments p ON p.id = rp.payment_id
+                 WHERE rp.remittance_id = ?'
+            );
+            $summary->execute([$remittanceId]);
+            $totals = $summary->fetch() ?: ['payment_count' => 0, 'total_amount' => 0];
+
+            if ((int) $totals['payment_count'] === 0) {
+                $db->prepare('DELETE FROM remittances WHERE id = ?')->execute([$remittanceId]);
+                continue;
+            }
+
+            $db->prepare('UPDATE remittances SET payment_count = ?, total_amount = ? WHERE id = ?')->execute([
+                (int) $totals['payment_count'],
+                (float) $totals['total_amount'],
+                $remittanceId,
+            ]);
+        }
+    }
+
+    if ($batchIds && billingTableExists('payment_batches')) {
+        foreach ($batchIds as $batchId) {
+            $summary = $db->prepare(
+                'SELECT COUNT(id) AS payment_count, COALESCE(SUM(amount), 0) AS total_amount
+                 FROM payments
+                 WHERE batch_id = ?'
+            );
+            $summary->execute([$batchId]);
+            $totals = $summary->fetch() ?: ['payment_count' => 0, 'total_amount' => 0];
+
+            if ((int) $totals['payment_count'] === 0) {
+                $db->prepare('DELETE FROM payment_batches WHERE id = ?')->execute([$batchId]);
+                continue;
+            }
+
+            $db->prepare('UPDATE payment_batches SET payment_count = ?, total_amount = ? WHERE id = ?')->execute([
+                (int) $totals['payment_count'],
+                (float) $totals['total_amount'],
+                $batchId,
+            ]);
+        }
+    }
+
+    return $deletedCount;
+}
+
+function deleteBillsByIds(PDO $db, array $billIds): array
+{
+    $billIds = billingPositiveIds($billIds);
+    if (!$billIds) {
+        throw new RuntimeException('No bills selected for deletion.');
+    }
+
+    $placeholders = implode(',', array_fill(0, count($billIds), '?'));
+
+    $lock = $db->prepare("SELECT id, bill_number, customer_id FROM bills WHERE id IN ({$placeholders}) FOR UPDATE");
+    $lock->execute($billIds);
+    $bills = $lock->fetchAll();
+
+    if (count($bills) !== count($billIds)) {
+        throw new RuntimeException('One or more bills could not be found.');
+    }
+
+    $paymentStmt = $db->prepare("SELECT id FROM payments WHERE bill_id IN ({$placeholders})");
+    $paymentStmt->execute($billIds);
+    $paymentIds = billingPositiveIds(array_column($paymentStmt->fetchAll(), 'id'));
+    $paymentCount = deleteBillingPaymentsByIds($db, $paymentIds);
+
+    if (billingTableExists('sms_notifications')) {
+        $sms = $db->prepare("UPDATE sms_notifications SET bill_id = NULL WHERE bill_id IN ({$placeholders})");
+        $sms->execute($billIds);
+    }
+
+    $deleteBills = $db->prepare("DELETE FROM bills WHERE id IN ({$placeholders})");
+    $deleteBills->execute($billIds);
+
+    return [
+        'bill_count'    => count($bills),
+        'payment_count' => $paymentCount,
+        'bills'         => $bills,
+    ];
+}
+
+function deleteBillRecord(int $billId): array
+{
+    if (!hasRole('owner')) {
+        throw new RuntimeException('Only the owner can delete bills.');
+    }
+
+    $bill = getBillById($billId);
+    if (!$bill) {
+        throw new RuntimeException('Bill not found.');
+    }
+
+    $db = getDB();
+    $db->beginTransaction();
+
+    try {
+        $result = deleteBillsByIds($db, [$billId]);
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
+
+    return [
+        'scope'           => 'bill',
+        'bill_number'     => $bill['bill_number'],
+        'customer_name'   => $bill['full_name'],
+        'account_number'  => $bill['account_number'],
+        'bill_count'      => $result['bill_count'],
+        'payment_count'   => $result['payment_count'],
+    ];
+}
+
+function deleteCustomerBills(int $customerId): array
+{
+    if (!hasRole('owner')) {
+        throw new RuntimeException('Only the owner can delete subscriber bills.');
+    }
+
+    $stmt = getDB()->prepare(
+        'SELECT id, full_name, account_number FROM customers WHERE id = ?'
+    );
+    $stmt->execute([$customerId]);
+    $customer = $stmt->fetch();
+
+    if (!$customer) {
+        throw new RuntimeException('Subscriber not found.');
+    }
+
+    $db = getDB();
+    $db->beginTransaction();
+
+    try {
+        $lock = $db->prepare('SELECT id FROM bills WHERE customer_id = ? FOR UPDATE');
+        $lock->execute([$customerId]);
+        $billIds = billingPositiveIds(array_column($lock->fetchAll(), 'id'));
+
+        if (!$billIds) {
+            throw new RuntimeException('This subscriber has no bills to delete.');
+        }
+
+        $result = deleteBillsByIds($db, $billIds);
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
+
+    return [
+        'scope'           => 'customer',
+        'customer_name'   => $customer['full_name'],
+        'account_number'  => $customer['account_number'],
+        'bill_count'      => $result['bill_count'],
+        'payment_count'   => $result['payment_count'],
+    ];
+}

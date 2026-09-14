@@ -1,8 +1,7 @@
 document.addEventListener('DOMContentLoaded', function () {
     var groups = Array.prototype.slice.call(document.querySelectorAll('.billing-customer-group'));
+    var searchForm = document.getElementById('billing-search-form');
     var listFilterInput = document.getElementById('billing-list-filter');
-    var listFilterEmpty = document.getElementById('billing-list-filter-empty');
-    var tableWrap = document.querySelector('.billing-datatable') && document.querySelector('.billing-datatable').closest('.table-responsive');
 
     function setGroupState(group, expanded) {
         group.classList.toggle('is-expanded', expanded);
@@ -51,33 +50,130 @@ document.addEventListener('DOMContentLoaded', function () {
     if (expandAllBtn) expandAllBtn.addEventListener('click', expandAll);
     if (collapseAllBtn) collapseAllBtn.addEventListener('click', collapseAll);
 
-    function applyListFilter() {
-        if (!listFilterInput || !groups.length) {
-            return;
+    if (searchForm && listFilterInput) {
+        var searchTimer = null;
+        var lastSubmitted = listFilterInput.value;
+        var focusKey = 'billingSearchFocus';
+
+        try {
+            if (sessionStorage.getItem(focusKey) === '1') {
+                sessionStorage.removeItem(focusKey);
+                listFilterInput.focus();
+                var caret = listFilterInput.value.length;
+                if (typeof listFilterInput.setSelectionRange === 'function') {
+                    listFilterInput.setSelectionRange(caret, caret);
+                }
+            }
+        } catch (err) {}
+
+        function submitSearch() {
+            var next = listFilterInput.value.trim();
+            if (next === lastSubmitted.trim()) {
+                return;
+            }
+
+            try {
+                sessionStorage.setItem(focusKey, '1');
+            } catch (err) {}
+
+            searchForm.submit();
         }
 
-        var query = listFilterInput.value.trim().toLowerCase();
-        var visibleCount = 0;
+        searchForm.addEventListener('submit', function () {
+            try {
+                sessionStorage.setItem(focusKey, '1');
+            } catch (err) {}
+        });
 
-        groups.forEach(function (group) {
-            var haystack = (group.getAttribute('data-search') || '').toLowerCase();
-            var matches = !query || haystack.indexOf(query) !== -1;
-            group.classList.toggle('is-filter-hidden', !matches);
-            if (matches) {
-                visibleCount += 1;
+        listFilterInput.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(submitSearch, 400);
+        });
+
+        listFilterInput.addEventListener('search', function () {
+            clearTimeout(searchTimer);
+            submitSearch();
+        });
+    }
+
+    var deleteModal = document.getElementById('billing-delete-modal');
+    var deleteForm = document.getElementById('billing-delete-form');
+
+    if (deleteModal && deleteForm) {
+        var titleEl = document.getElementById('billing-delete-title');
+        var messageEl = document.getElementById('billing-delete-message');
+        var submitEl = document.getElementById('billing-delete-submit');
+        var confirmEl = document.getElementById('billing-delete-confirm');
+        var scopeEl = document.getElementById('billing-delete-scope');
+        var billIdEl = document.getElementById('billing-delete-bill-id');
+        var customerIdEl = document.getElementById('billing-delete-customer-id');
+
+        function escapeHtml(value) {
+            var div = document.createElement('div');
+            div.textContent = value || '';
+            return div.innerHTML;
+        }
+
+        function openDeleteModal(button) {
+            var scope = button.getAttribute('data-delete-scope') || 'bill';
+            var customerName = escapeHtml(button.getAttribute('data-customer-name') || 'this subscriber');
+            var accountNumber = escapeHtml(button.getAttribute('data-account-number') || '');
+            var billNumber = escapeHtml(button.getAttribute('data-bill-number') || '');
+            var billCount = escapeHtml(button.getAttribute('data-bill-count') || '0');
+
+            scopeEl.value = scope;
+            billIdEl.value = button.getAttribute('data-bill-id') || '';
+            customerIdEl.value = button.getAttribute('data-customer-id') || '';
+            confirmEl.value = '';
+
+            if (scope === 'customer') {
+                titleEl.textContent = 'Delete Subscriber Bills';
+                messageEl.innerHTML = 'Delete all <strong>' + billCount + '</strong> bill(s) for <strong>'
+                    + customerName + '</strong>'
+                    + (accountNumber ? ' <span class="text-muted">(' + accountNumber + ')</span>' : '')
+                    + '?';
+                submitEl.textContent = 'Delete All Bills';
+            } else {
+                titleEl.textContent = 'Delete Bill';
+                messageEl.innerHTML = 'Delete bill <strong>' + billNumber + '</strong> for <strong>'
+                    + customerName + '</strong>'
+                    + (accountNumber ? ' <span class="text-muted">(' + accountNumber + ')</span>' : '')
+                    + '?';
+                submitEl.textContent = 'Delete Bill';
+            }
+
+            deleteModal.hidden = false;
+            document.body.classList.add('modal-open');
+            confirmEl.focus();
+        }
+
+        function closeDeleteModal() {
+            deleteModal.hidden = true;
+            document.body.classList.remove('modal-open');
+        }
+
+        document.querySelectorAll('[data-open-billing-delete]').forEach(function (button) {
+            button.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openDeleteModal(button);
+            });
+        });
+
+        deleteModal.querySelectorAll('[data-close-billing-delete]').forEach(function (button) {
+            button.addEventListener('click', closeDeleteModal);
+        });
+
+        deleteModal.addEventListener('click', function (event) {
+            if (event.target === deleteModal) {
+                closeDeleteModal();
             }
         });
 
-        if (tableWrap) {
-            tableWrap.classList.toggle('is-filter-empty', query !== '' && visibleCount === 0);
-        }
-
-        if (listFilterEmpty) {
-            listFilterEmpty.classList.toggle('hidden', query === '' || visibleCount > 0);
-        }
-    }
-
-    if (listFilterInput) {
-        listFilterInput.addEventListener('input', applyListFilter);
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !deleteModal.hidden) {
+                closeDeleteModal();
+            }
+        });
     }
 });

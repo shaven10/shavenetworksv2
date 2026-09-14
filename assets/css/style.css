@@ -1778,6 +1778,13 @@ body.sidebar-open .sidebar-toggle-bar:nth-child(3) {
     gap: 6px;
 }
 
+.billing-bill-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
 .billing-bill-row td {
     background: var(--surface);
 }
