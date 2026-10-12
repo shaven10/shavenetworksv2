@@ -351,7 +351,7 @@ function getCustomersForExport(string $search = '', string $status = '', int $pl
     $filters = buildCustomerListFilters($search, $status, $planId);
     $sql = 'SELECT c.*, p.name AS plan_name, p.monthly_fee, p.speed_mbps
             ' . $filters['from_where'] . '
-            ORDER BY c.full_name ASC, c.account_number ASC';
+            ORDER BY c.installation_date DESC, c.account_number ASC';
     $stmt = getDB()->prepare($sql);
     $stmt->execute($filters['params']);
     return $stmt->fetchAll() ?: [];
@@ -542,12 +542,11 @@ function renderCustomersPrintDocument(array $customers, string $filtersLabel, st
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Account</th>
+                            <th>Account / Installed</th>
                             <th>Customer</th>
                             <th>Phone</th>
                             <th>Plan</th>
                             <th>Connection</th>
-                            <th>Installed</th>
                             <th>Fee</th>
                             <th>Status</th>
                             <th>Address</th>
@@ -555,17 +554,19 @@ function renderCustomersPrintDocument(array $customers, string $filtersLabel, st
                     </thead>
                     <tbody>
                         <?php if (empty($customers)): ?>
-                        <tr><td colspan="10" class="text-center text-muted">No customers found.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">No customers found.</td></tr>
                         <?php else: ?>
                         <?php foreach ($customers as $i => $c): ?>
                         <tr>
                             <td><?= $i + 1 ?></td>
-                            <td><?= e($c['account_number']) ?></td>
+                            <td>
+                                <?= e($c['account_number']) ?><br>
+                                <small><?= e(formatDate($c['installation_date'] ?? null)) ?></small>
+                            </td>
                             <td><?= e($c['full_name']) ?></td>
                             <td><?= e($c['phone']) ?></td>
                             <td><?= e($c['plan_name'] ?? '') ?></td>
                             <td><?= e(connectionMediumLabel($c['connection_medium'] ?? null)) ?></td>
-                            <td><?= e(formatDate($c['installation_date'] ?? null)) ?></td>
                             <td><?= formatMoney((float) ($c['monthly_fee'] ?? 0)) ?></td>
                             <td><?= e(ucfirst((string) ($c['status'] ?? ''))) ?></td>
                             <td><?= e(formatCustomerAddress($c)) ?></td>

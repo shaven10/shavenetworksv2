@@ -80,7 +80,7 @@ $result = paginatedSelect(
 
     $params,
 
-    'ORDER BY c.created_at DESC',
+    'ORDER BY c.installation_date DESC, c.account_number ASC',
 
     $listPage,
 
@@ -228,15 +228,13 @@ require __DIR__ . '/../includes/header.php';
 
                 <tr>
 
-                    <th>Account #</th>
+                    <th>Account / Installed</th>
 
                     <th>Customer</th>
 
                     <th>Plan</th>
 
                     <th>Connection</th>
-
-                    <th>Installation Date</th>
 
                     <th>Next Billing</th>
 
@@ -254,7 +252,7 @@ require __DIR__ . '/../includes/header.php';
 
                 <?php if (empty($customers)): ?>
 
-                <tr><td colspan="9" class="text-center text-muted">No customers found.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted">No customers found.</td></tr>
 
                 <?php else: foreach ($customers as $c):
 
@@ -267,7 +265,8 @@ require __DIR__ . '/../includes/header.php';
                     <td>
                         <a href="<?= APP_URL ?>/customers/view.php?id=<?= $c['id'] ?>" class="account-link">
                             <strong><?= e($c['account_number']) ?></strong>
-                        </a>
+                        </a><br>
+                        <small class="text-muted">Installed <?= formatDate($c['installation_date']) ?></small>
                     </td>
 
                     <td>
@@ -281,8 +280,6 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e($c['plan_name']) ?></td>
 
                     <td><?= connectionMediumBadge($c['connection_medium'] ?? null) ?></td>
-
-                    <td><?= formatDate($c['installation_date']) ?></td>
 
                     <td><?= formatDate($nextBilling) ?></td>
 
