@@ -70,29 +70,30 @@ if (!$ownerId) {
     exit(1);
 }
 
-$existing = $db->prepare('SELECT id FROM employee_ledgers WHERE title = ? OR (employee_name = ? AND title LIKE ?)');
-$existing->execute(['NONOY', 'Nonoy', 'NONOY BALANSI%']);
-$existingId = (int) ($existing->fetchColumn() ?: 0);
-
-// Prefer exact title match
-$byTitle = $db->prepare('SELECT id FROM employee_ledgers WHERE title = ? LIMIT 1');
-$byTitle->execute([$title]);
-$existingId = (int) ($byTitle->fetchColumn() ?: $existingId);
+$find = $db->prepare(
+    "SELECT id FROM employee_ledgers
+     WHERE title = ?
+        OR title LIKE 'NONOY BALANSI%'
+        OR employee_name IN ('Nonoy', 'Nonoy Balansi')
+     ORDER BY id DESC"
+);
+$find->execute([$title]);
+$existingIds = array_map('intval', $find->fetchAll(PDO::FETCH_COLUMN) ?: []);
 
 try {
-    if ($existingId) {
+    foreach ($existingIds as $existingId) {
         $db->prepare('DELETE FROM employee_ledgers WHERE id = ?')->execute([$existingId]);
-        echo "Replaced existing Nonoy ledger #{$existingId}\n";
+        echo "Removed existing Nonoy ledger #{$existingId}\n";
     }
 
     $ledgerId = createEmployeeLedger([
-        'employee_name' => 'Nonoy',
+        'employee_name' => 'Nonoy Balansi',
         'title'         => $title,
         'in_label'      => 'Hatagon Beben',
         'out_label'     => 'Utang Nonoy',
         'balance_as_of' => '2026-05-05',
         'is_visible'    => false,
-        'notes'         => 'Imported from paper BALANSI template.',
+        'notes'         => 'Imported from paper BALANSI template (June 15, 2025 – May 2026).',
     ], $ownerId);
 
     $order = 1;

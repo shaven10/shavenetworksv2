@@ -15,7 +15,10 @@ require __DIR__ . '/../includes/header.php';
         <h1>Employee Ledgers</h1>
         <p>Salary advances and balance sheets (IN / OUT) for employees</p>
     </div>
-    <a href="<?= APP_URL ?>/ledgers/create.php" class="btn btn-primary">+ New Ledger</a>
+    <div class="header-actions">
+        <a href="<?= APP_URL ?>/ledgers/import.php" class="btn btn-outline">Import CSV / Excel</a>
+        <a href="<?= APP_URL ?>/ledgers/create.php" class="btn btn-primary">+ New Ledger</a>
+    </div>
 </div>
 
 <div class="card">
@@ -59,6 +62,8 @@ require __DIR__ . '/../includes/header.php';
                     <td><?= e(formatDate(substr((string) $row['updated_at'], 0, 10))) ?></td>
                     <td class="table-actions">
                         <a href="<?= APP_URL ?>/ledgers/view.php?id=<?= (int) $row['id'] ?>" class="btn btn-sm btn-primary">Open</a>
+                        <a href="<?= APP_URL ?>/ledgers/export.php?id=<?= (int) $row['id'] ?>&format=excel" class="btn btn-sm btn-outline">Excel</a>
+                        <a href="<?= APP_URL ?>/ledgers/export.php?id=<?= (int) $row['id'] ?>&format=csv" class="btn btn-sm btn-outline">CSV</a>
                         <a href="<?= APP_URL ?>/ledgers/edit.php?id=<?= (int) $row['id'] ?>" class="btn btn-sm btn-outline">Settings</a>
                     </td>
                 </tr>

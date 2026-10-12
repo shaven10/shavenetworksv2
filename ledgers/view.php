@@ -114,6 +114,9 @@ require __DIR__ . '/../includes/header.php';
     </div>
     <div class="header-actions">
         <button type="button" class="btn btn-primary" onclick="window.print()">Print Ledger</button>
+        <a href="<?= APP_URL ?>/ledgers/export.php?id=<?= $id ?>&format=excel" class="btn btn-outline">Export Excel</a>
+        <a href="<?= APP_URL ?>/ledgers/export.php?id=<?= $id ?>&format=csv" class="btn btn-outline">Export CSV</a>
+        <a href="<?= APP_URL ?>/ledgers/import.php?id=<?= $id ?>" class="btn btn-outline">Import</a>
         <a href="<?= APP_URL ?>/ledgers/edit.php?id=<?= $id ?>" class="btn btn-outline">Settings</a>
         <a href="<?= APP_URL ?>/ledgers/index.php" class="btn btn-outline">All Ledgers</a>
     </div>
