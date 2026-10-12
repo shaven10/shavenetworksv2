@@ -187,7 +187,16 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>Plan History</h2></div>
+    <div class="card-header">
+        <h2>Plan History</h2>
+        <?php if (hasRole('owner')): ?>
+        <a href="<?= APP_URL ?>/customers/plan_history.php?customer_id=<?= $id ?>" class="btn btn-sm btn-outline">Manage History</a>
+        <?php endif; ?>
+    </div>
+    <p class="form-hint" style="margin-bottom:12px">
+        Billing uses the plan active on each period’s start date. Periods must not overlap
+        (one plan ends when the next starts).
+    </p>
     <div class="table-responsive">
         <table class="table">
             <thead>
@@ -199,11 +208,12 @@ require __DIR__ . '/../includes/header.php';
                     <th>Ended</th>
                     <th>Changed By</th>
                     <th>Status</th>
+                    <?php if (hasRole('owner')): ?><th></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($planHistory)): ?>
-                <tr><td colspan="7" class="text-muted text-center">No plan history recorded.</td></tr>
+                <tr><td colspan="<?= hasRole('owner') ? 8 : 7 ?>" class="text-muted text-center">No plan history recorded.</td></tr>
                 <?php else: foreach ($planHistory as $row): ?>
                 <tr>
                     <td><?= e($row['plan_name']) ?></td>
@@ -219,6 +229,12 @@ require __DIR__ . '/../includes/header.php';
                         <span class="badge badge-secondary">Previous</span>
                         <?php endif; ?>
                     </td>
+                    <?php if (hasRole('owner')): ?>
+                    <td class="actions">
+                        <a href="<?= APP_URL ?>/customers/plan_history.php?customer_id=<?= $id ?>&edit_id=<?= (int) $row['id'] ?>"
+                           class="btn btn-sm btn-outline">Edit</a>
+                    </td>
+                    <?php endif; ?>
                 </tr>
                 <?php endforeach; endif; ?>
             </tbody>

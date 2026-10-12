@@ -50,7 +50,7 @@ try {
         $monthsAgo = random_int(0, 5);
         $periodStart = date('Y-m-d', strtotime("-{$monthsAgo} months"));
         $periodEnd = date('Y-m-d', strtotime($periodStart . ' +1 month -1 day'));
-        $dueDate = date('Y-m-d', strtotime($periodEnd . ' +7 days'));
+        $dueDate = date('Y-m-d', strtotime($periodEnd . ' +1 day'));
         $paymentDate = date('Y-m-d', strtotime($periodStart . ' +' . random_int(5, 25) . ' days'));
 
         if (strtotime($paymentDate) > time()) {

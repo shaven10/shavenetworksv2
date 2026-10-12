@@ -32,7 +32,7 @@ function getBillingPeriod(string $installationDate, ?string $referenceDate = nul
     $periodEnd->modify('-1 day');
 
     $dueDate = clone $periodEnd;
-    $dueDate->modify('+7 days');
+    $dueDate->modify('+1 day');
 
     return [
         'start'    => $periodStart->format('Y-m-d'),
@@ -73,7 +73,7 @@ function getAllBillingPeriods(string $installationDate, ?string $referenceDate =
         $periodEnd->modify('-1 day');
 
         $dueDate = clone $periodEnd;
-        $dueDate->modify('+7 days');
+        $dueDate->modify('+1 day');
 
         $period = [
             'start'    => $periodStart->format('Y-m-d'),
@@ -147,31 +147,37 @@ function generateBillForCustomer(array $customer, ?int $fromYear = null, ?int $t
     }
 
     $generated = 0;
+    $customerId = (int) $customer['id'];
+    $fallbackFee = (float) $customer['monthly_fee'];
     $periods = getAllBillingPeriods($customer['installation_date'], null, $fromYear, $toYear);
 
     foreach ($periods as $period) {
-        if (billExists($customer['id'], $period['start'], $period['end'])) {
+        if (billExists($customerId, $period['start'], $period['end'])) {
             continue;
         }
+
+        $amount = function_exists('getCustomerPlanRateForDate')
+            ? getCustomerPlanRateForDate($customerId, $period['start'], $fallbackFee)
+            : $fallbackFee;
 
         $stmt = getDB()->prepare(
             'INSERT INTO bills (customer_id, bill_number, billing_period_start, billing_period_end, due_date, amount)
              VALUES (?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
-            $customer['id'],
+            $customerId,
             generateBillNumber(),
             $period['start'],
             $period['end'],
             $period['due_date'],
-            $customer['monthly_fee'],
+            $amount,
         ]);
 
         $generated++;
     }
 
     if ($generated > 0) {
-        applyCustomerAdvanceToBills((int) $customer['id'], getDB());
+        applyCustomerAdvanceToBills($customerId, getDB());
     }
 
     return $generated;
@@ -189,24 +195,30 @@ function generateCurrentPeriodBillForCustomer(array $customer, ?string $referenc
         return 0;
     }
 
-    if (billExists((int) $customer['id'], $period['start'], $period['end'])) {
+    $customerId = (int) $customer['id'];
+    if (billExists($customerId, $period['start'], $period['end'])) {
         return 0;
     }
+
+    $fallbackFee = (float) $customer['monthly_fee'];
+    $amount = function_exists('getCustomerPlanRateForDate')
+        ? getCustomerPlanRateForDate($customerId, $period['start'], $fallbackFee)
+        : $fallbackFee;
 
     $stmt = getDB()->prepare(
         'INSERT INTO bills (customer_id, bill_number, billing_period_start, billing_period_end, due_date, amount)
          VALUES (?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
-        $customer['id'],
+        $customerId,
         generateBillNumber(),
         $period['start'],
         $period['end'],
         $period['due_date'],
-        $customer['monthly_fee'],
+        $amount,
     ]);
 
-    applyCustomerAdvanceToBills((int) $customer['id'], getDB());
+    applyCustomerAdvanceToBills($customerId, getDB());
 
     return 1;
 }
@@ -1490,8 +1502,13 @@ function billingTableExists(string $table): bool
     static $cache = [];
 
     if (!isset($cache[$table])) {
-        $stmt = getDB()->prepare('SHOW TABLES LIKE ?');
-        $stmt->execute([$table]);
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $table)) {
+            $cache[$table] = false;
+            return false;
+        }
+
+        // MariaDB/MySQL reject placeholders in SHOW TABLES LIKE ?
+        $stmt = getDB()->query('SHOW TABLES LIKE ' . getDB()->quote($table));
         $cache[$table] = (bool) $stmt->fetchColumn();
     }
 

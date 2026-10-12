@@ -22,6 +22,8 @@ $plans = getDB()->query('SELECT * FROM service_plans WHERE is_active = 1 ORDER B
 $errors = [];
 $data = normalizeCustomerFormData(array_merge($customer, $_POST));
 
+$planEffectiveDate = trim($_POST['plan_effective_date'] ?? date('Y-m-d'));
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$data['full_name']) $errors[] = 'Full name is required.';
     if (!$data['phone']) $errors[] = 'Phone is required.';
@@ -34,66 +36,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
     }
 
+    $oldPlanId = (int) $customer['plan_id'];
+    $newPlanId = (int) $data['plan_id'];
+    $planChanged = $oldPlanId !== $newPlanId;
+
+    if ($planChanged && hasRole('owner')) {
+        if ($planEffectiveDate === '') {
+            $errors[] = 'Plan effective date is required when changing the service plan.';
+        } elseif (!strtotime($planEffectiveDate)) {
+            $errors[] = 'Invalid plan effective date.';
+        } elseif ($data['installation_date'] && strtotime($planEffectiveDate) < strtotime($data['installation_date'])) {
+            $errors[] = 'Plan effective date cannot be before the installation date.';
+        }
+    }
+
     if (empty($errors)) {
-        $oldPlanId = (int) $customer['plan_id'];
-        $newPlanId = (int) $data['plan_id'];
         $user = currentUser();
 
-        if (hasRole('owner')) {
-            $stmt = getDB()->prepare(
-                'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
-                 plan_id=?, installation_date=?, status=?, billing_generate_from_year=?, billing_generate_to_year=?, notes=? WHERE id=?'
-            );
-            $stmt->execute([
-                $data['full_name'],
-                $data['email'] ?: null,
-                $data['phone'],
-                $data['connection_medium'],
-                $data['address'],
-                $data['barangay'] ?: null,
-                $data['city'],
-                $data['province'],
-                $data['plan_id'],
-                $data['installation_date'],
-                $data['status'],
-                $data['billing_generate_from_year'],
-                $data['billing_generate_to_year'],
-                $data['notes'] ?: null,
-                $id,
-            ]);
-        } else {
-            $stmt = getDB()->prepare(
-                'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
-                 plan_id=?, installation_date=?, status=?, notes=? WHERE id=?'
-            );
-            $stmt->execute([
-                $data['full_name'],
-                $data['email'] ?: null,
-                $data['phone'],
-                $data['connection_medium'],
-                $data['address'],
-                $data['barangay'] ?: null,
-                $data['city'],
-                $data['province'],
-                $data['plan_id'],
-                $data['installation_date'],
-                $data['status'],
-                $data['notes'] ?: null,
-                $id,
-            ]);
-        }
+        try {
+            if (hasRole('owner')) {
+                $stmt = getDB()->prepare(
+                    'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
+                     plan_id=?, installation_date=?, status=?, billing_generate_from_year=?, billing_generate_to_year=?, notes=? WHERE id=?'
+                );
+                $stmt->execute([
+                    $data['full_name'],
+                    $data['email'] ?: null,
+                    $data['phone'],
+                    $data['connection_medium'],
+                    $data['address'],
+                    $data['barangay'] ?: null,
+                    $data['city'],
+                    $data['province'],
+                    $data['plan_id'],
+                    $data['installation_date'],
+                    $data['status'],
+                    $data['billing_generate_from_year'],
+                    $data['billing_generate_to_year'],
+                    $data['notes'] ?: null,
+                    $id,
+                ]);
+            } else {
+                $stmt = getDB()->prepare(
+                    'UPDATE customers SET full_name=?, email=?, phone=?, connection_medium=?, address=?, barangay=?, city=?, province=?,
+                     plan_id=?, installation_date=?, status=?, notes=? WHERE id=?'
+                );
+                $stmt->execute([
+                    $data['full_name'],
+                    $data['email'] ?: null,
+                    $data['phone'],
+                    $data['connection_medium'],
+                    $data['address'],
+                    $data['barangay'] ?: null,
+                    $data['city'],
+                    $data['province'],
+                    $data['plan_id'],
+                    $data['installation_date'],
+                    $data['status'],
+                    $data['notes'] ?: null,
+                    $id,
+                ]);
+            }
 
-        if ($oldPlanId !== $newPlanId) {
-            recordCustomerPlanChange($id, $oldPlanId, $newPlanId, (int) ($user['id'] ?? 0) ?: null, 'Plan changed');
-            logActivity(
-                'plan_changed',
-                "Changed plan for {$customer['account_number']} from plan #{$oldPlanId} to #{$newPlanId}"
-            );
-        }
+            if ($planChanged) {
+                $effectiveAt = hasRole('owner') ? $planEffectiveDate : date('Y-m-d');
+                recordCustomerPlanChange(
+                    $id,
+                    $oldPlanId,
+                    $newPlanId,
+                    (int) ($user['id'] ?? 0) ?: null,
+                    'Plan changed' . (hasRole('owner') ? ' effective ' . $effectiveAt : ''),
+                    $effectiveAt
+                );
+                logActivity(
+                    'plan_changed',
+                    "Changed plan for {$customer['account_number']} from plan #{$oldPlanId} to #{$newPlanId} effective {$effectiveAt}"
+                );
+            }
 
-        logActivity('customer_updated', "Updated customer {$customer['account_number']}");
-        flash('success', 'Customer updated successfully.');
-        redirect("/customers/view.php?id={$id}");
+            logActivity('customer_updated', "Updated customer {$customer['account_number']}");
+            flash('success', 'Customer updated successfully.');
+            redirect("/customers/view.php?id={$id}");
+        } catch (Throwable $e) {
+            $errors[] = $e->getMessage();
+        }
     }
 }
 
@@ -128,7 +154,7 @@ require __DIR__ . '/../includes/header.php';
             </div>
             <div class="form-group">
                 <label for="plan_id">Service Plan *</label>
-                <select id="plan_id" name="plan_id" required>
+                <select id="plan_id" name="plan_id" required data-original-plan="<?= (int) $customer['plan_id'] ?>">
                     <?php foreach ($plans as $plan): ?>
                     <option value="<?= $plan['id'] ?>" <?= $data['plan_id'] == $plan['id'] ? 'selected' : '' ?>>
                         <?= e($plan['name']) ?> — <?= formatMoney($plan['monthly_fee']) ?>/mo
@@ -136,6 +162,18 @@ require __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php if (hasRole('owner')): ?>
+            <div class="form-group" id="plan-effective-group">
+                <label for="plan_effective_date">Plan Effective Date *</label>
+                <input type="date" id="plan_effective_date" name="plan_effective_date"
+                       value="<?= e($planEffectiveDate) ?>"
+                       min="<?= e($data['installation_date'] ?: $customer['installation_date']) ?>">
+                <small class="form-hint">
+                    When the new plan starts. Bill generation uses each period’s plan from history
+                    (rate on the period start date).
+                </small>
+            </div>
+            <?php endif; ?>
             <div class="form-group">
                 <label for="connection_medium">Medium of Connection *</label>
                 <select id="connection_medium" name="connection_medium" required>
@@ -211,5 +249,36 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <?php renderCustomerDeleteSection($customer); ?>
+
+<?php if (hasRole('owner')): ?>
+<script>
+(function () {
+    var planSelect = document.getElementById('plan_id');
+    var effectiveGroup = document.getElementById('plan-effective-group');
+    var effectiveInput = document.getElementById('plan_effective_date');
+    var installInput = document.getElementById('installation_date');
+    if (!planSelect || !effectiveGroup || !effectiveInput) {
+        return;
+    }
+
+    var originalPlan = planSelect.getAttribute('data-original-plan');
+
+    function syncEffectiveDate() {
+        var changed = String(planSelect.value) !== String(originalPlan);
+        effectiveGroup.style.display = changed ? '' : 'none';
+        effectiveInput.required = changed;
+        if (installInput && installInput.value) {
+            effectiveInput.min = installInput.value;
+        }
+    }
+
+    planSelect.addEventListener('change', syncEffectiveDate);
+    if (installInput) {
+        installInput.addEventListener('change', syncEffectiveDate);
+    }
+    syncEffectiveDate();
+})();
+</script>
+<?php endif; ?>
 
 <?php require __DIR__ . '/../includes/footer.php'; ?>

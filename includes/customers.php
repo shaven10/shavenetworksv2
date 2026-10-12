@@ -125,6 +125,32 @@ function billingYearOptions(int $yearsBack = 10, int $yearsForward = 2): array
     return $years;
 }
 
+function ensureCustomerPlanHistoryTable(): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+
+    getDB()->exec(
+        "CREATE TABLE IF NOT EXISTS customer_plan_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT NOT NULL,
+            plan_id INT NOT NULL,
+            plan_name VARCHAR(100) NOT NULL,
+            speed_mbps INT NOT NULL,
+            monthly_fee DECIMAL(10,2) NOT NULL,
+            started_at DATETIME NOT NULL,
+            ended_at DATETIME NULL,
+            changed_by INT NULL,
+            notes TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_customer_plan_started (customer_id, started_at)
+        )"
+    );
+    $ready = true;
+}
+
 function getPlanSnapshot(int $planId): ?array
 {
     $stmt = getDB()->prepare('SELECT id, name, speed_mbps, monthly_fee FROM service_plans WHERE id = ?');
@@ -134,6 +160,84 @@ function getPlanSnapshot(int $planId): ?array
     return $plan ?: null;
 }
 
+function normalizePlanEffectiveAt(?string $effectiveAt): string
+{
+    if ($effectiveAt === null || trim($effectiveAt) === '') {
+        return date('Y-m-d 00:00:00');
+    }
+
+    $ts = strtotime($effectiveAt);
+    if ($ts === false) {
+        throw new RuntimeException('Invalid plan effective date.');
+    }
+
+    return date('Y-m-d 00:00:00', $ts);
+}
+
+function ensureCustomerHasPlanHistory(int $customerId): void
+{
+    ensureCustomerPlanHistoryTable();
+    $db = getDB();
+
+    $stmt = $db->prepare('SELECT COUNT(*) FROM customer_plan_history WHERE customer_id = ?');
+    $stmt->execute([$customerId]);
+    if ((int) $stmt->fetchColumn() > 0) {
+        return;
+    }
+
+    $customerStmt = $db->prepare(
+        'SELECT c.plan_id, c.installation_date, c.created_by, c.created_at,
+                p.name, p.speed_mbps, p.monthly_fee
+         FROM customers c
+         JOIN service_plans p ON p.id = c.plan_id
+         WHERE c.id = ?'
+    );
+    $customerStmt->execute([$customerId]);
+    $customer = $customerStmt->fetch();
+    if (!$customer) {
+        return;
+    }
+
+    $startedAt = !empty($customer['installation_date'])
+        ? $customer['installation_date'] . ' 00:00:00'
+        : ($customer['created_at'] ?? date('Y-m-d H:i:s'));
+
+    $db->prepare(
+        'INSERT INTO customer_plan_history
+            (customer_id, plan_id, plan_name, speed_mbps, monthly_fee, started_at, ended_at, changed_by, notes)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)'
+    )->execute([
+        $customerId,
+        (int) $customer['plan_id'],
+        $customer['name'],
+        (int) $customer['speed_mbps'],
+        $customer['monthly_fee'],
+        $startedAt,
+        $customer['created_by'] !== null ? (int) $customer['created_by'] : null,
+        'Backfilled from current plan',
+    ]);
+}
+
+function getCustomerPlanRateForDate(int $customerId, string $asOfDate, float $fallbackFee): float
+{
+    ensureCustomerHasPlanHistory($customerId);
+
+    $asOf = date('Y-m-d 00:00:00', strtotime($asOfDate) ?: time());
+    $stmt = getDB()->prepare(
+        'SELECT monthly_fee
+         FROM customer_plan_history
+         WHERE customer_id = ?
+           AND started_at <= ?
+           AND (ended_at IS NULL OR ended_at > ?)
+         ORDER BY started_at DESC, id DESC
+         LIMIT 1'
+    );
+    $stmt->execute([$customerId, $asOf, $asOf]);
+    $fee = $stmt->fetchColumn();
+
+    return $fee !== false ? (float) $fee : $fallbackFee;
+}
+
 function recordCustomerPlanStart(
     int $customerId,
     int $planId,
@@ -141,6 +245,7 @@ function recordCustomerPlanStart(
     ?int $changedBy = null,
     ?string $notes = null
 ): void {
+    ensureCustomerPlanHistoryTable();
     $plan = getPlanSnapshot($planId);
     if (!$plan) {
         throw new RuntimeException('Service plan not found.');
@@ -168,29 +273,72 @@ function recordCustomerPlanChange(
     int $oldPlanId,
     int $newPlanId,
     ?int $changedBy = null,
-    ?string $notes = null
+    ?string $notes = null,
+    ?string $effectiveAt = null
 ): void {
     if ($oldPlanId === $newPlanId) {
         return;
     }
 
     $db = getDB();
-    $endedAt = date('Y-m-d H:i:s');
+    ensureCustomerPlanHistoryTable();
+    ensureCustomerHasPlanHistory($customerId);
+
+    $effective = normalizePlanEffectiveAt($effectiveAt);
+
+    $customerStmt = $db->prepare('SELECT installation_date FROM customers WHERE id = ?');
+    $customerStmt->execute([$customerId]);
+    $installationDate = $customerStmt->fetchColumn();
+    if ($installationDate && strtotime($effective) < strtotime($installationDate . ' 00:00:00')) {
+        throw new RuntimeException('Plan effective date cannot be before the installation date.');
+    }
 
     $openStmt = $db->prepare(
-        'SELECT id FROM customer_plan_history
+        'SELECT id, plan_id, started_at FROM customer_plan_history
          WHERE customer_id = ? AND ended_at IS NULL
          ORDER BY started_at DESC, id DESC LIMIT 1'
     );
     $openStmt->execute([$customerId]);
-    $openId = $openStmt->fetchColumn();
+    $open = $openStmt->fetch();
 
-    if ($openId) {
+    if ($open) {
+        if (strtotime((string) $open['started_at']) > strtotime($effective)) {
+            throw new RuntimeException(
+                'Plan effective date must be on or after the current plan start ('
+                . formatDate((string) $open['started_at']) . ').'
+            );
+        }
+
+        if (strtotime((string) $open['started_at']) === strtotime($effective)) {
+            $plan = getPlanSnapshot($newPlanId);
+            if (!$plan) {
+                throw new RuntimeException('Service plan not found.');
+            }
+            $db->prepare(
+                'UPDATE customer_plan_history
+                 SET plan_id = ?, plan_name = ?, speed_mbps = ?, monthly_fee = ?, changed_by = ?, notes = ?
+                 WHERE id = ?'
+            )->execute([
+                $plan['id'],
+                $plan['name'],
+                $plan['speed_mbps'],
+                $plan['monthly_fee'],
+                $changedBy,
+                $notes ?: 'Plan updated',
+                (int) $open['id'],
+            ]);
+            return;
+        }
+
         $db->prepare('UPDATE customer_plan_history SET ended_at = ? WHERE id = ?')
-            ->execute([$endedAt, $openId]);
+            ->execute([$effective, (int) $open['id']]);
     } else {
         $oldPlan = getPlanSnapshot($oldPlanId);
         if ($oldPlan) {
+            $startPrior = $installationDate
+                ? $installationDate . ' 00:00:00'
+                : $effective;
+            assertPlanHistoryNoOverlap($customerId, $startPrior, $effective, null);
             $db->prepare(
                 'INSERT INTO customer_plan_history
                     (customer_id, plan_id, plan_name, speed_mbps, monthly_fee, started_at, ended_at, changed_by, notes)
@@ -201,19 +349,29 @@ function recordCustomerPlanChange(
                 $oldPlan['name'],
                 $oldPlan['speed_mbps'],
                 $oldPlan['monthly_fee'],
-                $endedAt,
-                $endedAt,
+                $startPrior,
+                $effective,
                 $changedBy,
                 'Previous plan (no prior history)',
             ]);
         }
     }
 
-    recordCustomerPlanStart($customerId, $newPlanId, $endedAt, $changedBy, $notes);
+    assertPlanHistoryNoOverlap($customerId, $effective, null, null);
+
+    recordCustomerPlanStart(
+        $customerId,
+        $newPlanId,
+        $effective,
+        $changedBy,
+        $notes ?: 'Plan changed'
+    );
 }
 
 function getCustomerPlanHistory(int $customerId): array
 {
+    ensureCustomerHasPlanHistory($customerId);
+
     $stmt = getDB()->prepare(
         'SELECT h.*, u.full_name as changed_by_name
          FROM customer_plan_history h
@@ -224,6 +382,263 @@ function getCustomerPlanHistory(int $customerId): array
     $stmt->execute([$customerId]);
 
     return $stmt->fetchAll();
+}
+
+function getCustomerPlanHistoryRow(int $historyId): ?array
+{
+    ensureCustomerPlanHistoryTable();
+    $stmt = getDB()->prepare(
+        'SELECT h.*, c.installation_date, c.account_number, c.full_name AS customer_name
+         FROM customer_plan_history h
+         JOIN customers c ON c.id = h.customer_id
+         WHERE h.id = ?'
+    );
+    $stmt->execute([$historyId]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+/**
+ * Half-open intervals [started_at, ended_at) must not overlap.
+ * A NULL ended_at means open-ended (current plan).
+ */
+function assertPlanHistoryNoOverlap(
+    int $customerId,
+    string $startedAt,
+    ?string $endedAt,
+    ?int $excludeId = null
+): void {
+    $startTs = strtotime($startedAt);
+    if ($startTs === false) {
+        throw new RuntimeException('Invalid plan start date.');
+    }
+
+    $endTs = null;
+    if ($endedAt !== null && $endedAt !== '') {
+        $endTs = strtotime($endedAt);
+        if ($endTs === false) {
+            throw new RuntimeException('Invalid plan end date.');
+        }
+        if ($endTs <= $startTs) {
+            throw new RuntimeException('Plan end date must be after the start date.');
+        }
+    }
+
+    $stmt = getDB()->prepare(
+        'SELECT id, plan_name, started_at, ended_at
+         FROM customer_plan_history
+         WHERE customer_id = ?'
+        . ($excludeId ? ' AND id <> ?' : '')
+        . ' ORDER BY started_at ASC, id ASC'
+    );
+    $params = [$customerId];
+    if ($excludeId) {
+        $params[] = $excludeId;
+    }
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+
+    $openCount = 0;
+    foreach ($rows as $row) {
+        if (empty($row['ended_at'])) {
+            $openCount++;
+        }
+    }
+    if ($endTs === null) {
+        $openCount++;
+    }
+    if ($openCount > 1) {
+        throw new RuntimeException('Only one current (open-ended) plan history row is allowed.');
+    }
+
+    foreach ($rows as $row) {
+        $otherStart = strtotime((string) $row['started_at']);
+        $otherEnd = !empty($row['ended_at']) ? strtotime((string) $row['ended_at']) : null;
+
+        // Overlap for half-open ranges: start < otherEnd AND otherStart < end
+        $leftOk = ($otherEnd === null) ? true : ($startTs < $otherEnd);
+        $rightOk = ($endTs === null) ? true : ($otherStart < $endTs);
+
+        if ($leftOk && $rightOk) {
+            $otherLabel = formatDate((string) $row['started_at'])
+                . ' – '
+                . (!empty($row['ended_at']) ? formatDate((string) $row['ended_at']) : 'current');
+            throw new RuntimeException(
+                'Plan dates overlap with “' . $row['plan_name'] . '” (' . $otherLabel . '). '
+                . 'Use non-overlapping ranges where one plan ends when the next starts.'
+            );
+        }
+    }
+}
+
+function syncCustomerPlanFromHistory(int $customerId): void
+{
+    $db = getDB();
+    $stmt = $db->prepare(
+        'SELECT plan_id FROM customer_plan_history
+         WHERE customer_id = ? AND ended_at IS NULL
+         ORDER BY started_at DESC, id DESC LIMIT 1'
+    );
+    $stmt->execute([$customerId]);
+    $planId = $stmt->fetchColumn();
+    if ($planId) {
+        $db->prepare('UPDATE customers SET plan_id = ? WHERE id = ?')
+            ->execute([(int) $planId, $customerId]);
+        return;
+    }
+
+    // Fallback: latest closed segment
+    $latest = $db->prepare(
+        'SELECT plan_id FROM customer_plan_history
+         WHERE customer_id = ?
+         ORDER BY started_at DESC, id DESC LIMIT 1'
+    );
+    $latest->execute([$customerId]);
+    $planId = $latest->fetchColumn();
+    if ($planId) {
+        $db->prepare('UPDATE customers SET plan_id = ? WHERE id = ?')
+            ->execute([(int) $planId, $customerId]);
+    }
+}
+
+function updateCustomerPlanHistory(
+    int $historyId,
+    int $planId,
+    string $startedDate,
+    ?string $endedDate,
+    ?string $notes,
+    ?int $changedBy = null
+): void {
+    if (!hasRole('owner')) {
+        throw new RuntimeException('Only the owner can update plan history.');
+    }
+
+    $row = getCustomerPlanHistoryRow($historyId);
+    if (!$row) {
+        throw new RuntimeException('Plan history row not found.');
+    }
+
+    $plan = getPlanSnapshot($planId);
+    if (!$plan) {
+        throw new RuntimeException('Service plan not found.');
+    }
+
+    $startedAt = normalizePlanEffectiveAt($startedDate);
+    $endedAt = ($endedDate !== null && trim($endedDate) !== '')
+        ? normalizePlanEffectiveAt($endedDate)
+        : null;
+
+    $installation = (string) ($row['installation_date'] ?? '');
+    if ($installation !== '' && strtotime($startedAt) < strtotime($installation . ' 00:00:00')) {
+        throw new RuntimeException('Plan start date cannot be before the installation date.');
+    }
+
+    assertPlanHistoryNoOverlap((int) $row['customer_id'], $startedAt, $endedAt, $historyId);
+
+    $db = getDB();
+    $db->prepare(
+        'UPDATE customer_plan_history
+         SET plan_id = ?, plan_name = ?, speed_mbps = ?, monthly_fee = ?,
+             started_at = ?, ended_at = ?, changed_by = ?, notes = ?
+         WHERE id = ?'
+    )->execute([
+        $plan['id'],
+        $plan['name'],
+        $plan['speed_mbps'],
+        $plan['monthly_fee'],
+        $startedAt,
+        $endedAt,
+        $changedBy,
+        $notes !== null && trim($notes) !== '' ? trim($notes) : $row['notes'],
+        $historyId,
+    ]);
+
+    syncCustomerPlanFromHistory((int) $row['customer_id']);
+}
+
+function addCustomerPlanHistory(
+    int $customerId,
+    int $planId,
+    string $startedDate,
+    ?string $endedDate,
+    ?string $notes,
+    ?int $changedBy = null
+): int {
+    if (!hasRole('owner')) {
+        throw new RuntimeException('Only the owner can add plan history.');
+    }
+
+    ensureCustomerPlanHistoryTable();
+    $plan = getPlanSnapshot($planId);
+    if (!$plan) {
+        throw new RuntimeException('Service plan not found.');
+    }
+
+    $customerStmt = getDB()->prepare('SELECT installation_date FROM customers WHERE id = ?');
+    $customerStmt->execute([$customerId]);
+    $customer = $customerStmt->fetch();
+    if (!$customer) {
+        throw new RuntimeException('Customer not found.');
+    }
+
+    $startedAt = normalizePlanEffectiveAt($startedDate);
+    $endedAt = ($endedDate !== null && trim($endedDate) !== '')
+        ? normalizePlanEffectiveAt($endedDate)
+        : null;
+
+    if (!empty($customer['installation_date'])
+        && strtotime($startedAt) < strtotime($customer['installation_date'] . ' 00:00:00')) {
+        throw new RuntimeException('Plan start date cannot be before the installation date.');
+    }
+
+    assertPlanHistoryNoOverlap($customerId, $startedAt, $endedAt, null);
+
+    $db = getDB();
+    $db->prepare(
+        'INSERT INTO customer_plan_history
+            (customer_id, plan_id, plan_name, speed_mbps, monthly_fee, started_at, ended_at, changed_by, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )->execute([
+        $customerId,
+        $plan['id'],
+        $plan['name'],
+        $plan['speed_mbps'],
+        $plan['monthly_fee'],
+        $startedAt,
+        $endedAt,
+        $changedBy,
+        $notes !== null && trim($notes) !== '' ? trim($notes) : 'Manual plan history entry',
+    ]);
+
+    $newId = (int) $db->lastInsertId();
+    syncCustomerPlanFromHistory($customerId);
+
+    return $newId;
+}
+
+function deleteCustomerPlanHistoryRow(int $historyId): void
+{
+    if (!hasRole('owner')) {
+        throw new RuntimeException('Only the owner can delete plan history.');
+    }
+
+    $row = getCustomerPlanHistoryRow($historyId);
+    if (!$row) {
+        throw new RuntimeException('Plan history row not found.');
+    }
+
+    $customerId = (int) $row['customer_id'];
+    $db = getDB();
+
+    $countStmt = $db->prepare('SELECT COUNT(*) FROM customer_plan_history WHERE customer_id = ?');
+    $countStmt->execute([$customerId]);
+    if ((int) $countStmt->fetchColumn() <= 1) {
+        throw new RuntimeException('Cannot delete the only plan history row. Add another period first.');
+    }
+
+    $db->prepare('DELETE FROM customer_plan_history WHERE id = ?')->execute([$historyId]);
+    syncCustomerPlanFromHistory($customerId);
 }
 
 function deleteCustomerAccount(int $customerId): void
